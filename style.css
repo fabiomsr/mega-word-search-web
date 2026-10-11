@@ -1,0 +1,164 @@
+:root {
+  --bg: #1b2030;
+  --panel: #252c40;
+  --text: #f4f1e8;
+  --muted: #aab3c8;
+  --accent: #3a8ef0;
+  --accent-2: #f5c84b;
+  --paper: #f6f0e3;
+  --radius: 18px;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Only the chosen language is shown; data-lang is set on <html> by i18n.js. */
+html[data-lang="es"] [lang]:not(html):not([lang="es"]),
+html[data-lang="en"] [lang]:not(html):not([lang="en"]),
+html[data-lang="de"] [lang]:not(html):not([lang="de"]) { display: none !important; }
+
+a { color: var(--accent-2); }
+
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
+
+header.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 0;
+}
+
+.brand { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; font-weight: 700; }
+.brand img { width: 40px; height: 40px; border-radius: 10px; }
+
+.langs { display: flex; gap: 4px; }
+.langs a {
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+html[data-lang="es"] .langs a[data-set="es"],
+html[data-lang="en"] .langs a[data-set="en"],
+html[data-lang="de"] .langs a[data-set="de"] { background: var(--panel); color: var(--text); }
+
+.hero {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 32px;
+  align-items: center;
+  padding: 24px 0 48px;
+}
+.hero img.feature { display: block; width: 100%; height: auto; border-radius: var(--radius); }
+.hero h1 { font-size: clamp(32px, 6vw, 52px); line-height: 1.1; margin: 0 0 12px; }
+.hero p.lead { color: var(--muted); font-size: 19px; margin: 0 0 24px; }
+
+@media (min-width: 860px) {
+  .hero { grid-template-columns: 1fr 1.1fr; }
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--accent);
+  color: #fff;
+  text-decoration: none;
+  font-weight: 700;
+  padding: 14px 22px;
+  border-radius: 14px;
+}
+.button:hover { filter: brightness(1.1); }
+.note { color: var(--muted); font-size: 14px; margin-top: 10px; }
+
+section { padding: 40px 0; }
+section h2 { font-size: 28px; margin: 0 0 20px; }
+
+.features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+.feature-card { background: var(--panel); border-radius: var(--radius); padding: 20px; }
+.feature-card h3 { margin: 0 0 6px; font-size: 18px; }
+.feature-card p { margin: 0; color: var(--muted); font-size: 15px; }
+.feature-card .emoji { font-size: 28px; }
+
+.shots {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding-bottom: 12px;
+}
+.shots img {
+  flex: 0 0 auto;
+  width: 220px;
+  height: auto;
+  aspect-ratio: 9 / 16;
+  border-radius: 14px;
+  scroll-snap-align: start;
+  background: var(--panel);
+}
+
+footer {
+  border-top: 1px solid var(--panel);
+  color: var(--muted);
+  font-size: 14px;
+  padding: 24px 0 40px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  justify-content: space-between;
+}
+footer a { color: var(--muted); }
+
+/* Privacy policy */
+.policy { max-width: 720px; padding-bottom: 40px; }
+.policy h1 { font-size: 34px; line-height: 1.2; margin: 16px 0 4px; }
+.policy .updated { color: var(--muted); margin: 0 0 24px; }
+.policy h2 { font-size: 20px; margin: 28px 0 8px; }
+.policy p, .policy li { color: #dfe3ec; }
+
+/* Screenshot carousel: no scrollbar, arrows on the sides as in Google Play. */
+.carousel { position: relative; }
+.shots { scrollbar-width: none; }
+.shots::-webkit-scrollbar { display: none; }
+
+.arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 48px;
+  height: 48px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--text);
+  color: var(--bg);
+  font: 700 34px/1 system-ui, sans-serif;
+  padding-bottom: 4px;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  transition: opacity 0.2s;
+}
+.arrow.prev { left: -8px; }
+.arrow.next { right: -8px; }
+.arrow:hover { filter: brightness(0.92); }
+.arrow[hidden] { display: none; }
+
+/* On touch screens the screenshots are swiped, like in the Play Store app. */
+@media (hover: none) {
+  .arrow { display: none; }
+}
