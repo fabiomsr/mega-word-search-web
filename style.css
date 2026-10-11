@@ -81,6 +81,8 @@ html[data-lang="de"] .langs a[data-set="de"] { background: var(--panel); color: 
   border-radius: 14px;
 }
 .button:hover { filter: brightness(1.1); }
+.button.secondary { background: var(--panel); color: var(--text); box-shadow: inset 0 0 0 2px var(--accent); }
+.buttons { display: flex; flex-wrap: wrap; gap: 12px; }
 .note { color: var(--muted); font-size: 14px; margin-top: 10px; }
 
 section { padding: 40px 0; }
