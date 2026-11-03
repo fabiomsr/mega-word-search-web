@@ -561,11 +561,14 @@ function shuffle(items, random) {
 
 // ---- Finding words ----
 
-/** The word the tapped cells spell (in some order) among `pending`, with its cells first to last; null if none. */
+/**
+ * The word some of the tapped cells spell (in some order) among `pending`, with its cells first to last; null if none.
+ * Letters tapped by mistake do not get in the way.
+ */
 export function matchSelection(grid, selected, pending, allowed) {
   if (selected.length < 2 || selected.some((cell) => !grid.contains(cell))) return null;
   for (const word of pending) {
-    if (word.letters.length !== selected.length) continue;
+    if (word.letters.length > selected.length) continue;
     for (const first of selected) {
       if (grid.get(first) !== word.letters[0]) continue;
       const path = [first];

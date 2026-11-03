@@ -21,11 +21,11 @@ const FOUND_TIME = 0.24;
 const STAGGER = 0.07;
 const BOUNCE = 0.18;
 
-const BOARD = [246, 241, 228];
-const BOARD_EDGE = "rgb(170,150,120)";
 const LETTER = [44, 48, 58];
-const MINIMAP_FRAME = "rgba(24,32,48,0.78)";
-const MINIMAP_VIEW = "rgb(52,104,168)";
+// A board up to this many columns wider than the starting view is seen whole across instead (a little smaller).
+const MAX_SHRINK_COLUMNS = 2;
+// WCAG: white letters, big and thick, read well from this contrast up (1, none, to 21).
+const MIN_WHITE_CONTRAST = 2.4;
 
 const key = (cell) => cell.row * 100000 + cell.col;
 const ease = (t) => 1 - (1 - t) * (1 - t);
@@ -33,6 +33,17 @@ const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
 const mix = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
 const rgb = (c, alpha = 1) => `rgba(${c[0]},${c[1]},${c[2]},${alpha})`;
 export const hexColor = (hex) => [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255];
+
+function luminance(color) {
+  const [r, g, b] = color.map((value) => {
+    const c = value / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** The letter on a square of this colour: white, unless it would be hard to read there; then the board's dark letter. */
+export const letterOn = (square) => (1.05 / (luminance(square) + 0.05) >= MIN_WHITE_CONTRAST ? [255, 255, 255] : LETTER);
 
 /** The animations of the squares under the letters (CellAnimator). */
 class CellAnimator {
@@ -93,7 +104,8 @@ class CellAnimator {
 
 export class BoardView {
   /**
-   * options: { canvas, minimap (canvas or null), grid, kind (BoardKind), letterHeight, cellsAcross,
+   * options: { canvas, minimap (canvas or null), grid, kind (BoardKind), letterHeight, cellsAcross, startWidth (the width
+   * cellsAcross are fitted into to start: the screen's short side), colors { board [r,g,b], edge, frame, view },
    * selectionColor [r,g,b], emojiAtlas (Image), emojiColumns, onTap(cell), onChange() }.
    */
   constructor(options) {
@@ -145,12 +157,29 @@ export class BoardView {
     this.dirty = true;
   }
 
-  /** The starting view: centred, about cellsAcross cells across (a little bigger cells on wide screens). */
+  /** The starting view: centred, about cellsAcross cells across (a little bigger cells on wide screens), with no letters cut in half at the sides. */
   reset() {
-    const across = Math.min(this.view.w / this.cellsAcross, 52 * (11 / this.cellsAcross));
+    const across = Math.min(this.startWidth / this.cellsAcross, 52 * (11 / this.cellsAcross));
     this.zoom = clamp(across, this.minZoom, this.maxZoom);
     this.position = { x: this.grid.width / 2, y: this.grid.height / 2 };
     this.velocity = { x: 0, y: 0 };
+    this.fitColumns();
+  }
+
+  /**
+   * Columns whole at the view's sides: a board that fits across is left as it is; one a column or two wider is seen whole
+   * across, a little smaller; a wider one shows a whole number of columns, the middle ones.
+   */
+  fitColumns() {
+    const across = this.view.w / this.zoom;
+    if (this.grid.width <= across) return;
+    if (this.grid.width <= across + MAX_SHRINK_COLUMNS) {
+      this.zoom = clamp((this.view.w - 2 * MARGIN) / this.grid.width, this.minZoom, this.maxZoom);
+      return;
+    }
+    const columns = Math.max(1, Math.round(across));
+    this.zoom = clamp(this.view.w / columns, this.minZoom, this.maxZoom);
+    this.position = { x: Math.floor((this.grid.width - columns) / 2) + columns / 2, y: this.position.y };
   }
 
   show(position, zoom) {
@@ -341,7 +370,7 @@ export class BoardView {
     const ctx = canvas.getContext("2d");
     const image = ctx.createImageData(this.grid.width, this.grid.height);
     for (let i = 0; i < this.grid.letters.length; i++) {
-      const c = mix(BOARD, LETTER, ink(this.grid.letters[i]));
+      const c = mix(this.colors.board, LETTER, ink(this.grid.letters[i]));
       image.data.set([c[0], c[1], c[2], 255], i * 4);
     }
     ctx.putImageData(image, 0, 0);
@@ -360,9 +389,9 @@ export class BoardView {
     const origin = this.toScreen(0, 0);
     const W = this.grid.width, H = this.grid.height;
 
-    ctx.fillStyle = BOARD_EDGE;
+    ctx.fillStyle = this.colors.edge;
     ctx.fillRect(origin.x - EDGE * z, origin.y - EDGE * z, (W + 2 * EDGE) * z, (H + 2 * EDGE) * z);
-    ctx.fillStyle = rgb(BOARD);
+    ctx.fillStyle = rgb(this.colors.board);
     ctx.fillRect(origin.x, origin.y, W * z, H * z);
 
     const opacity = clamp((z * dpr - LETTERS_FROM) / (LETTERS_FULL - LETTERS_FROM), 0, 1);
@@ -377,7 +406,10 @@ export class BoardView {
     const white = new Map();
     for (const mark of marks) {
       drawMark(ctx, mark, origin, z, 1);
-      if (!mark.outline) white.set(key(mark.cell), Math.max(white.get(key(mark.cell)) || 0, mark.white));
+      if (mark.outline) continue;
+      // How far the letter has turned to the colour it takes on its square.
+      const was = white.get(key(mark.cell));
+      if (!was || mark.white >= was.amount) white.set(key(mark.cell), { amount: mark.white, target: letterOn(mark.color) });
     }
     if (this.highlight) {
       const { cell, color, width } = this.highlight;
@@ -396,7 +428,7 @@ export class BoardView {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       const plain = rgb(LETTER, opacity);
-      const emojiSide = this.letterHeight * z * 1.05;
+      const emojiSide = this.letterHeight * z * 1.3125;
       for (let row = firstRow; row <= lastRow; row++) {
         for (let col = firstCol; col <= lastCol; col++) {
           const letter = this.grid.at(row, col);
@@ -411,8 +443,8 @@ export class BoardView {
             ctx.globalAlpha = 1;
             continue;
           }
-          const amount = white.get(row * 100000 + col);
-          ctx.fillStyle = amount ? rgb(mix(LETTER, [255, 255, 255], amount), opacity) : plain;
+          const turn = white.get(row * 100000 + col);
+          ctx.fillStyle = turn ? rgb(mix(LETTER, turn.target, turn.amount), opacity) : plain;
           ctx.fillText(letter, cx, cy + size * 0.04);
         }
       }
@@ -451,7 +483,7 @@ export class BoardView {
     const ctx = m.getContext("2d");
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = MINIMAP_FRAME;
+    ctx.fillStyle = this.colors.frame;
     ctx.fillRect(0, 0, w, h);
     const scale = this.minimapScale();
     const origin = { x: (w - this.grid.width * scale) / 2, y: (h - this.grid.height * scale) / 2 };
@@ -464,7 +496,7 @@ export class BoardView {
     const from = this.toWorld(this.view.x, this.view.y), to = this.toWorld(this.view.x + this.view.w, this.view.y + this.view.h);
     const fx = clamp(from.x, 0, this.grid.width), fy = clamp(from.y, 0, this.grid.height);
     const tx = clamp(to.x, 0, this.grid.width), ty = clamp(to.y, 0, this.grid.height);
-    ctx.strokeStyle = MINIMAP_VIEW;
+    ctx.strokeStyle = this.colors.view;
     ctx.lineWidth = 1.5;
     ctx.strokeRect(origin.x + fx * scale, origin.y + fy * scale, (tx - fx) * scale, (ty - fy) * scale);
   }

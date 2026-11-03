@@ -3,7 +3,7 @@
 // ?seed=…&lang=…&size=…&words=…&shapes=…&board=…&cats=…&time=… gives everyone the same board (also in the app,
 // with the same options and seed).
 import * as core from "./core.js";
-import { BoardView, hexColor } from "./board.js";
+import { BoardView, hexColor, letterOn } from "./board.js";
 import { play, sound } from "./sound.js";
 
 const LANGUAGES = [["es", "Español"], ["en", "English"], ["de", "Deutsch"]];
@@ -22,17 +22,78 @@ const PLAY_STORE = "https://play.google.com/store/apps/details?id=com.sglora.meg
 
 // The options' colours (Model/ColorChoices.cs).
 const SELECTION_COLORS = [["Azul", 0x346ed2], ["Verde", 0x2e9650], ["Morado", 0x7e57c2], ["Naranja", 0xe6781e], ["Rosa", 0xd84380], ["Gris", 0x5a6478]];
+const BASIC_PALETTES = 5;
 const PALETTES = [
   ["Arcoíris", [0xe57373, 0xe07b00, 0x4caf50, 0x1ea8de, 0x9c59b6, 0x009688, 0xe9548c, 0x7986cb]],
   ["Océano", [0x0077b6, 0x0096c7, 0x023e8a, 0x4895ef, 0x00a6c8, 0x2a9d8f, 0x457b9d, 0x264653]],
   ["Bosque", [0x388e3c, 0x689f38, 0x556b2f, 0x2e7d32, 0x827717, 0x00796b, 0x795548, 0x5d4037]],
   ["Atardecer", [0xe65100, 0xef6c00, 0xd84315, 0xc2185b, 0xad1457, 0xf4511e, 0xc62828, 0xff6f00]],
   ["Caramelo", [0xec407a, 0xab47bc, 0x7e57c2, 0x5c6bc0, 0x039be5, 0x00acc1, 0xff7043, 0xf57c00]],
+  // On their own screen.
+  ["Algodón de azúcar", [0xffc7c7, 0xffe2e2, 0x8785a2, 0xf4eeff, 0xdcd6f7, 0xa6b1e1, 0x424874, 0xea80b0]],
+  ["Mar profundo", [0xa6c0c5, 0xdbe2ef, 0x3f72af, 0x112d4e, 0x1b262c, 0x0f4c75, 0x3282b8, 0xbbe1fa]],
+  ["Melocotón", [0xdd969c, 0xffe3e1, 0xffd1d1, 0xff9494, 0xb1b2ff, 0xaac4ff, 0xd2daff, 0xeef1ff]],
+  ["Menta y fresa", [0xffb6b9, 0xfacebb, 0xbbded6, 0x61c0bf, 0xa8d8ea, 0xaa96da, 0xfcbad3, 0xffffd2]],
+  ["Niebla", [0x6096b4, 0x93bfcf, 0xbdcdd6, 0xedddab, 0xdefcf9, 0xcadefc, 0xc3bef0, 0xcca8e9]],
+  ["Luciérnaga", [0x222831, 0x393e46, 0xffd369, 0x5d0ced, 0x08d9d6, 0xff5200, 0xff2e63, 0x92e601]],
+  ["Frambuesa", [0xd14d72, 0xffabab, 0xfcc8d1, 0xcc99b3, 0xf38181, 0xfce38a, 0xeaffd0, 0x95e1d3]],
+  ["Hortensia", [0xf2d7d9, 0xd3cedf, 0x9cb4cc, 0x748da6, 0xffcfdf, 0xfefdca, 0xe0f9b5, 0xa5dee5]],
+  ["Ocaso", [0xf67280, 0xc06c84, 0x6c5b7b, 0x355c7d, 0x5aa2c4, 0xadc4ce, 0xedd6af, 0xf2e9a0]],
+  ["Café con leche", [0x8d7b68, 0xa4907c, 0xc8b6a6, 0xf1dec9, 0xe23e57, 0x88304e, 0x522546, 0x311d3f]],
+  ["Arrecife", [0x364f6b, 0x3fc1c9, 0xf5dcdc, 0xfc5185, 0xfcd1d1, 0xece2e1, 0xd3e0dc, 0xaee1e1]],
+  ["Pradera", [0xedf2bf, 0x9dc08b, 0x609966, 0x40513b, 0x00b8a9, 0xf7efba, 0xf6416c, 0xffde7d]],
+  ["Pétalos", [0xffeecc, 0xffddcc, 0xd9ffb3, 0xfebbcc, 0xff9ed7, 0xffffb5, 0xcde990, 0xaacb73]],
 ];
+// The themes (UI/Theme.cs): the interface's colours are in game.css; these, on the board's canvas.
+const THEMES = {
+  classic: { name: "Clásico", background: "#182030", board: [246, 241, 228], edge: "rgb(170,150,120)", frame: "rgba(24,32,48,0.78)", view: "rgb(52,104,168)" },
+  cats: { name: "Gatos", background: "#10243f", board: [0xf7, 0xf3, 0xe9], edge: "rgb(210,198,181)", frame: "rgba(16,36,63,0.78)", view: "rgb(46,139,216)" },
+};
+const DEFAULT_THEME = "cats";
+// The kittens (Model/CatStickers.cs), numbered row by row on their sheet.
+const STICKER_COLUMNS = 6;
+const STICKER_ROWS = 5;
+const STICKER_COUNT = 30;
+const PEEKING = 0;
+const SLEEPING = 13;
+const FACES = [1, 3, 4, 7, 8, 10, 12, 14, 15, 21, 26, 28];
+// The kitten of this run of the game, any but the sleeping one.
+const RUN_KITTEN = (() => {
+  const kitten = Math.floor(Math.random() * (STICKER_COUNT - 1));
+  return kitten >= SLEEPING ? kitten + 1 : kitten;
+})();
+// Paw prints on the background (UI/ThemeDecor.cs): how wide, how far from everything, and one per this much room.
+const MIN_PAW = 16;
+const MAX_PAW = 24;
+const PAW_CLEARANCE = 10;
+const PAW_EDGE = 4;
+const PAW_SPACING = 56;
+const ROOM_PER_PAW = 48000;
+const PAW_TRIES = 300;
+// A back button and its kitten: room for a title's rays to keep clear of.
+const BACK_BUTTON_ROOM = 104;
+// In landscape the word panel is a column on the right this wide (a share of the screen, within limits).
+const PANEL_SHARE = 0.3;
+const MIN_PANEL_WIDTH = 280;
+const MAX_PANEL_WIDTH = 360;
+const CLEAR_RADIUS = 28;
+const DOCKED_CLEAR_RADIUS = 22;
 const LETTER_SIZES = ["Normal", "Grande", "Muy grande"];
 const LETTER_HEIGHTS = [0.66, 0.74, 0.82];
 const CELLS_ACROSS = [11, 9, 7.5];
 const AMOUNTS = ["Pocas", "Normal", "Muchas"];
+// The first stage's help (UI/BasicsHelp.cs).
+const HELP_SIDE = 5;
+const HELP_BIG_SIDE = 8;
+const HELP_CELL = 52;
+const HELP_FILLER = "MARTOLENUSCIDABROPELIAGUNSEROMATICLUNAPEROSALTIDEMOC";
+const HELP_WORD_ROW = 2;
+const STEP_TIME = 0.55;
+const HOLD_TIME = 1.5;
+const DRAG_TIME = 1.3;
+const REST_TIME = 0.6;
+const ZOOM_TIME = 1.2;
+const HELP_MAX_ZOOM = 1.9;
 // The shapes of a custom game in a shared link, one letter each.
 const SHAPE_LETTERS = [["h", "horizontal"], ["v", "vertical"], ["d", "diagonal"], ["r", "reversed"], ["o", "snakeOrthogonal"], ["s", "snake"]];
 const URL_AMOUNTS = ["few", "normal", "many"];
@@ -70,6 +131,8 @@ let bank, worlds, emoji;
 let settings, progress, custom, saved;
 let wordittoAtlas = null;
 let emojiAtlas = null;
+// The options' tab shown: 0 the look, 1 the rest.
+let optionsTab = 0;
 const stack = [];
 
 // ---- Storage (it may be unavailable: then nothing is kept) ----
@@ -212,6 +275,79 @@ function wordittoPicture(index, cls = "") {
   });
 }
 
+/** A kitten of the cats theme (other themes do not show them: see game.css). */
+function sticker(index, cls = "") {
+  return el(`span.sticker${cls ? "." + cls : ""}`, {
+    style: {
+      backgroundPosition: `${((index % STICKER_COLUMNS) / (STICKER_COLUMNS - 1)) * 100}% ${(Math.floor(index / STICKER_COLUMNS) / (STICKER_ROWS - 1)) * 100}%`,
+    },
+  });
+}
+
+const RAYS = '<svg viewBox="0 -50 80 100"><path d="M35 -24 59 -41M42 0H72M35 24 59 41"/></svg>';
+
+function rays(side) {
+  const span = el(`span.rays-${side}`);
+  span.innerHTML = RAYS;
+  return span;
+}
+
+/** A screen's title, with rays on both sides in a theme that has them, if they fit (see fitRays). */
+const title = (spec, text, attributes) => el(`${spec}.rayed`, attributes, el("span.t", {}, rays("left"), text, rays("right")));
+
+const backButton = () => el("button.icon-btn.back", { onclick: close, "aria-label": tr("Volver") }, sticker(PEEKING), "<");
+
+/** Rays only when both fit on the screen, out of a back button's way. */
+function fitRays() {
+  for (const heading of app.querySelectorAll(".t")) {
+    const parent = heading.parentElement;
+    parent.classList.remove("no-rays");
+    const rect = heading.getBoundingClientRect(), size = parseFloat(getComputedStyle(heading.querySelector("svg")).width) || 0;
+    const center = rect.left + rect.width / 2, reach = rect.width / 2 + size;
+    const keepClear = parent.closest(".topbar") ? BACK_BUTTON_ROOM : 0;
+    if (center - reach < keepClear || center + reach > window.innerWidth - keepClear) parent.classList.add("no-rays");
+  }
+}
+
+function useTheme(id) {
+  settings.theme = id in THEMES ? id : DEFAULT_THEME;
+  document.documentElement.dataset.theme = settings.theme;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", THEMES[settings.theme].background);
+}
+
+// ---- Paw prints on the background, in the room a screen leaves free: always the same for the same screen ----
+
+function placePaws(id) {
+  const layer = document.getElementById("paws");
+  if (!layer) return;
+  layer.replaceChildren();
+  if (!id || settings.theme !== "cats") return;
+  const width = window.innerWidth, height = window.innerHeight;
+  const occupied = [...app.querySelectorAll("button, h1, h2, a, p, .section-title, .display, .count, .sticker, .sample, input")]
+    .map((element) => element.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
+  let hash = 2166136261;
+  for (const c of id) hash = Math.imul(hash ^ c.charCodeAt(0), 16777619);
+  const random = () => {
+    hash = (hash + 0x6d2b79f5) | 0;
+    let t = Math.imul(hash ^ (hash >>> 15), 1 | hash);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const wanted = Math.max(3, Math.floor((width * height) / ROOM_PER_PAW));
+  const paws = [];
+  for (let i = 0; i < PAW_TRIES && paws.length < wanted; i++) {
+    const size = MIN_PAW + random() * (MAX_PAW - MIN_PAW), half = size / 2 + PAW_EDGE;
+    const x = half + random() * (width - 2 * half), y = half + random() * (height - 2 * half);
+    const angle = (random() - 0.5) * 1.2, reach = size / 2 + PAW_CLEARANCE;
+    if (occupied.some((r) => x + reach > r.left && x - reach < r.right && y + reach > r.top && y - reach < r.bottom)) continue;
+    if (paws.some((paw) => Math.hypot(paw.x - x, paw.y - y) < PAW_SPACING)) continue;
+    paws.push({ x, y, size, angle });
+  }
+  layer.innerHTML = paws.map((paw) => `<g transform="translate(${paw.x} ${paw.y}) rotate(${(paw.angle * 180) / Math.PI}) scale(${paw.size})">`
+    + '<ellipse cy=".17" rx=".27" ry=".22"/><circle cx="-.33" cy="-.1" r=".11"/><circle cx="-.13" cy="-.3" r=".115"/>'
+    + '<circle cx=".13" cy="-.3" r=".115"/><circle cx=".33" cy="-.1" r=".11"/></g>').join("");
+}
+
 const invented = (word) => word.category === core.INVENTED_CATEGORY;
 const spaced = (text) => [...text].join(" ");
 const worldName = (world) => tr(world.name);
@@ -225,8 +361,17 @@ function show(screen) {
   if (!top) return;
   top.element = top.render();
   app.replaceChildren(top.element);
+  fitRays();
+  placePaws(typeof top.paws === "function" ? top.paws() : top.paws);
   top.shown?.();
 }
+
+window.addEventListener("resize", () => {
+  const top = stack[stack.length - 1];
+  if (!top) return;
+  fitRays();
+  placePaws(typeof top.paws === "function" ? top.paws() : top.paws);
+});
 
 function push(screen, { replace = false } = {}) {
   const top = stack[stack.length - 1];
@@ -269,21 +414,23 @@ function refresh() {
 
 function homeScreen() {
   return {
+    paws: "home",
     render() {
       const continuing = saved && saved.lang === language ? saved : null;
       const found = progress.wordittos.length;
       return el("div.screen", {},
         el("div.column", {},
-          el("h1", {}, "Mega Word Search"),
+          el("h1.home-title", {}, title("span.mega", "Mega"), " ", el("span.name", {}, "Word Search")),
           el("p.subtitle", {}, tr("Sopas de letras gigantes")),
-          el("div.menu", {},
-            continuing ? button(tr("Continuar"), () => resumeSaved(continuing), { sub: savedTitle(continuing) }) : null,
+          el("div.menu.home", {},
+            continuing ? button(tr("Continuar"), () => resumeSaved(continuing), { sub: savedTitle(continuing), cls: "resume" }) : null,
             button(tr("Desafíos"), () => push(worldsScreen())),
             button("Wordittos", () => push(wordittosScreen()), { sub: `${found}/${core.WORDITTO_PICTURES}` }),
             button(tr("Partida custom"), () => push(customScreen())),
             button(tr("Opciones"), () => push(optionsScreen())),
           ),
-          el("p.subtitle", { style: { marginTop: "36px", fontSize: "16px" } },
+          sticker(SLEEPING, "under-menu"),
+          el("p.subtitle", { style: { marginTop: "24px", fontSize: "16px" } },
             el("a", { href: PLAY_STORE, style: { color: "var(--title)" } }, tr("Mega Word Search para Android")),
             " · ",
             el("a", { href: "../", style: { color: "var(--dim)" } }, tr("Volver a la web")),
@@ -306,10 +453,11 @@ function savedTitle(game) {
 
 function worldsScreen() {
   return {
+    paws: "worlds",
     render() {
       return el("div.screen", {},
         el("div.column", {},
-          el("h1", { style: { marginTop: "4vh" } }, tr("Desafíos")),
+          title("h1", tr("Desafíos"), { style: { marginTop: "4vh" } }),
           el("div.menu", { style: { maxWidth: "460px", marginTop: "24px" } },
             worlds.map((world, i) => {
               const open = core.isWorldUnlocked(progress, worlds, i);
@@ -320,7 +468,8 @@ function worldsScreen() {
                 disabled: !open,
               });
             }),
-            el("div", { style: { height: "24px" } }),
+            sticker(RUN_KITTEN, "over-back"),
+            el("div.back-gap"),
             button(tr("Volver"), close),
           ),
         ),
@@ -332,6 +481,7 @@ function worldsScreen() {
 function stagesScreen(w) {
   const world = worlds[w];
   return {
+    paws: "stages",
     render() {
       const grid = el("div.stage-grid", {},
         world.stages.map((stage, s) => {
@@ -350,9 +500,10 @@ function stagesScreen(w) {
         }));
       return el("div.screen", {},
         el("div.column", {},
-          el("div.topbar", {}, el("button.icon-btn", { onclick: close, "aria-label": tr("Volver") }, "<"), el("h2", {}, worldName(world)),
-            el("span.count", {}, `${core.completedCount(progress, world)}/${world.stages.length}`)),
+          title("h1", worldName(world), { style: { marginTop: "2vh" } }),
+          el("p.subtitle.tight", {}, `${core.completedCount(progress, world)}/${world.stages.length}`),
           grid,
+          el("div.menu", { style: { marginTop: "20px" } }, button(tr("Volver"), close)),
         ),
       );
     },
@@ -403,9 +554,13 @@ function wordittoHints(worditto) {
 
 function wordittosScreen() {
   return {
+    paws: "wordittos",
     render() {
-      const list = el("div.wordittos-list");
+      // In landscape, two columns: odd challenges on the left and even ones on the right.
+      const twoColumns = matchMedia("(min-width: 900px) and (orientation: landscape)").matches;
+      const columns = twoColumns ? [el("div.wordittos-list"), el("div.wordittos-list")] : [el("div.wordittos-list")];
       worlds.forEach((world, w) => {
+        const list = columns[w % columns.length];
         list.append(el("div.section-title", {}, `${w + 1}. ${worldName(world)}`));
         world.stages.forEach((stage, s) => {
           const worditto = core.wordittoFor(stage, bank);
@@ -429,10 +584,10 @@ function wordittosScreen() {
         });
       });
       return el("div.screen", {},
-        el("div.column", {},
-          el("div.topbar", {}, el("button.icon-btn", { onclick: close, "aria-label": tr("Volver") }, "<"), el("h2", {}, "Wordittos"),
+        el(`div.column${twoColumns ? ".wide" : ""}`, {},
+          el("div.topbar", {}, backButton(), title("h2", "Wordittos"),
             el("span.count", {}, `${progress.wordittos.length}/${core.WORDITTO_PICTURES}`)),
-          list,
+          el(twoColumns ? "div.wordittos-columns" : "div", {}, columns),
         ),
       );
     },
@@ -442,8 +597,8 @@ function wordittosScreen() {
 // ---- Options ----
 
 function optionRows(sections) {
-  return el("div.options", {}, sections.map(([title, columns, items]) => [
-    el("div.section-title", {}, title),
+  return el("div.options", {}, sections.map(([name, columns, items], i) => [
+    el("div.section-title", {}, sticker(FACES[i % FACES.length], "face"), name),
     el("div.option-row", { style: { gridTemplateColumns: `repeat(${columns}, 1fr)` } },
       items.map(([label, isOn, toggle]) => el(`button.opt${isOn() ? ".on" : ""}`, {
         onclick: () => {
@@ -456,44 +611,105 @@ function optionRows(sections) {
 
 function optionsScreen() {
   const swatch = (hex) => el("span.swatch", { style: { background: `#${hex.toString(16).padStart(6, "0")}` } });
+  const lookSections = () => [
+    [tr("Tema"), 2, Object.entries(THEMES).map(([id, theme]) => [tr(theme.name), () => settings.theme === id, () => useTheme(id)])],
+    [tr("Tamaño de letra"), 3, LETTER_SIZES.map((name, i) => [tr(name), () => settings.letterSize === i, () => (settings.letterSize = i)])],
+    [tr("Color de selección"), 3, SELECTION_COLORS.map(([name, hex], i) =>
+      [el("span", {}, swatch(hex), tr(name)), () => settings.selectionColor === i, () => (settings.selectionColor = i)])],
+    [tr("Colores de las palabras"), 3, [
+      ...PALETTES.slice(0, BASIC_PALETTES).map(([name, colors], i) =>
+        [el("span", {}, el("span.swatches", {}, colors.map(swatch)), tr(name)), () => settings.palette === i, () => (settings.palette = i)]),
+      // The other palettes, on their own screen; on while one of them is in use, with its name.
+      [settings.palette >= BASIC_PALETTES && PALETTES[settings.palette] ? tr(PALETTES[settings.palette][0]) : tr("Más…"),
+        () => settings.palette >= BASIC_PALETTES, () => push(palettesScreen())],
+    ]],
+  ];
+  const generalSections = () => {
+    const sections = [
+      [tr("Idioma"), 4, [
+        [tr("Sistema"), () => !settings.language, () => setLanguage("")],
+        ...LANGUAGES.map(([code, name]) => [name, () => settings.language === code, () => setLanguage(code)]),
+      ]],
+      [tr("Sonido"), 2, [
+        [tr("Sí"), () => settings.sound, () => { settings.sound = true; sound.enabled = true; play("found"); }],
+        [tr("No"), () => !settings.sound, () => { settings.sound = false; sound.enabled = false; }],
+      ]],
+    ];
+    if (navigator.vibrate) {
+      sections.push([tr("Vibración"), 2, [
+        [tr("Sí"), () => settings.vibration, () => { settings.vibration = true; navigator.vibrate(30); }],
+        [tr("No"), () => !settings.vibration, () => (settings.vibration = false)],
+      ]]);
+    }
+    sections.push([tr("Botón para borrar la selección"), 2, [
+      [tr("Sí"), () => settings.clearButton, () => (settings.clearButton = true)],
+      [tr("No"), () => !settings.clearButton, () => (settings.clearButton = false)],
+    ]]);
+    return sections;
+  };
+  const tab = (label, index) => el(`button.tab${optionsTab === index ? ".on" : ""}`, { onclick: () => { optionsTab = index; refresh(); } }, label);
   return {
+    paws: () => `options/${optionsTab}`,
     render() {
-      const sections = [
-        [tr("Idioma"), 4, [
-          [tr("Sistema"), () => !settings.language, () => setLanguage("")],
-          ...LANGUAGES.map(([code, name]) => [name, () => settings.language === code, () => setLanguage(code)]),
-        ]],
-        [tr("Sonido"), 2, [
-          [tr("Sí"), () => settings.sound, () => { settings.sound = true; sound.enabled = true; play("found"); }],
-          [tr("No"), () => !settings.sound, () => { settings.sound = false; sound.enabled = false; }],
-        ]],
-      ];
-      if (navigator.vibrate) {
-        sections.push([tr("Vibración"), 2, [
-          [tr("Sí"), () => settings.vibration, () => { settings.vibration = true; navigator.vibrate(30); }],
-          [tr("No"), () => !settings.vibration, () => (settings.vibration = false)],
-        ]]);
-      }
-      sections.push(
-        [tr("Botón para borrar la selección"), 2, [
-          [tr("Sí"), () => settings.clearButton, () => (settings.clearButton = true)],
-          [tr("No"), () => !settings.clearButton, () => (settings.clearButton = false)],
-        ]],
-        [tr("Tamaño de letra"), 3, LETTER_SIZES.map((name, i) => [tr(name), () => settings.letterSize === i, () => (settings.letterSize = i)])],
-        [tr("Color de selección"), 3, SELECTION_COLORS.map(([name, hex], i) =>
-          [el("span", {}, swatch(hex), tr(name)), () => settings.selectionColor === i, () => (settings.selectionColor = i)])],
-        [tr("Colores de las palabras"), 3, PALETTES.map(([name, colors], i) =>
-          [el("span", {}, colors.slice(0, 3).map(swatch), el("br"), tr(name)), () => settings.palette === i, () => (settings.palette = i)])],
-      );
       return el("div.screen", {},
         el("div.column", {},
-          el("div.topbar", {}, el("button.icon-btn", { onclick: close, "aria-label": tr("Volver") }, "<"), el("h2", {}, tr("Opciones")), el("span")),
-          optionRows(sections),
+          el("div.topbar", {}, backButton(), title("h2", tr("Opciones")), el("span")),
+          el("div.tabs", {}, tab(tr("Aspecto"), 0), tab(tr("General"), 1)),
+          optionsTab === 0 ? [optionRows(lookSections()), lettersSample()] : [
+            optionRows(generalSections()),
+            el("div.links", {},
+              el("a.opt", { href: PLAY_STORE }, tr("Valóranos")),
+              el("a.opt", { href: `../privacy.html?lang=${language}` }, tr("Privacidad"))),
+          ],
           el("div", { style: { height: "24px" } }),
         ),
       );
     },
     hidden: saveSettings,
+  };
+}
+
+/** A row of cells as big as a puzzle starts with at this letter size: the first two selected, the others found. */
+function lettersSample() {
+  const word = tr("LETRAS"), palette = (PALETTES[settings.palette] ?? PALETTES[0])[1];
+  const across = CELLS_ACROSS[settings.letterSize] ?? CELLS_ACROSS[0];
+  const side = Math.min(Math.min(window.innerWidth, window.innerHeight) / across, 52 * (11 / across), (Math.min(window.innerWidth, 520) - 32) / word.length);
+  const height = LETTER_HEIGHTS[settings.letterSize] ?? LETTER_HEIGHTS[0];
+  return el("div.sample", {}, [...word].map((letter, i) => {
+    const color = hexColor(i < 2 ? (SELECTION_COLORS[settings.selectionColor] ?? SELECTION_COLORS[0])[1] : palette[(i - 2) % palette.length]);
+    const ink = letterOn(color);
+    return el("span.cell", { style: { width: `${side}px`, height: `${side}px`, fontSize: `${height * side * 1.12}px`, background: `rgb(${THEMES[settings.theme].board.join(",")})` } },
+      el("span", { style: { background: `rgb(${color.join(",")})`, color: `rgb(${ink.join(",")})` } }, letter));
+  }));
+}
+
+/** More palettes for the words found: a line each, with its name and its colours; a tap picks one and goes back. */
+function palettesScreen() {
+  return {
+    paws: "palettes",
+    render() {
+      return el("div.screen", {},
+        el("div.column", {},
+          el("div.topbar", {}, backButton(), title("h2", tr("Paletas")), el("span")),
+          el("div.palettes", {}, PALETTES.slice(BASIC_PALETTES).map(([name, colors], i) => {
+            const index = BASIC_PALETTES + i;
+            return el(`button.palette${settings.palette === index ? ".on" : ""}`, {
+              onclick: () => {
+                settings.palette = index;
+                saveSettings();
+                close();
+              },
+            },
+            sticker(FACES[i % FACES.length]),
+            el("span.name", {}, tr(name)),
+            el("span.colors", {}, colors.map((hex) => {
+              const color = hexColor(hex), ink = letterOn(color);
+              return el("span", { style: { background: `rgb(${color.join(",")})`, color: `rgb(${ink.join(",")})` } }, "A");
+            })));
+          })),
+        ),
+      );
+    },
   };
 }
 
@@ -509,6 +725,7 @@ async function setLanguage(code) {
 function customScreen() {
   let seed = newSeed();
   return {
+    paws: "custom",
     render() {
       const words = (amount) => core.customWordCount(custom, bank, amount);
       const sections = [
@@ -536,7 +753,7 @@ function customScreen() {
       const canPlay = core.customShapes(custom) !== 0;
       return el("div.screen", {},
         el("div.column", {},
-          el("div.topbar", {}, el("button.icon-btn", { onclick: close, "aria-label": tr("Volver") }, "<"), el("h2", {}, tr("Partida custom")), el("span")),
+          el("div.topbar", {}, backButton(), title("h2", tr("Partida custom")), el("span")),
           optionRows(sections),
           el("div.seed-row", {},
             el("span.label", {}, tr("Semilla {0}", seed)),
@@ -589,11 +806,12 @@ function customGame(settingsOfGame, seed, extra = {}) {
 function seedScreen(done) {
   let digits = "";
   return {
+    paws: "seed",
     render() {
       const key = (label, action, disabled) => button(label, () => { action(); refresh(); }, { disabled });
       return el("div.screen.seed-pad", {},
         el("div.column", {},
-          el("div.topbar", {}, el("button.icon-btn", { onclick: close, "aria-label": tr("Volver") }, "<"), el("h2", {}, tr("Semilla")), el("span")),
+          title("h1", tr("Semilla"), { style: { marginTop: "2vh" } }),
           el("p.subtitle", {}, tr("La misma semilla y opciones dan la misma sopa")),
           el("div.display", {}, digits || "_"),
           el("div.pad", {},
@@ -602,6 +820,7 @@ function seedScreen(done) {
             key("0", () => { if (digits && digits.length < 9) digits += "0"; }),
             button("OK", () => { done(Number(digits)); close(); }, { disabled: !digits }),
           ),
+          el("div.menu", { style: { marginTop: "20px" } }, button(tr("Volver"), close)),
         ),
       );
     },
@@ -729,6 +948,10 @@ function puzzleScreen(game) {
   const selectionColor = hexColor((SELECTION_COLORS[settings.selectionColor] ?? SELECTION_COLORS[0])[1]);
   const foundColor = (index) => hexColor(palette[index % palette.length]);
   const selection = [];
+  // No word to find is longer than the longest one, the Worditto included: one letter more drops the first tapped.
+  const longest = Math.max(...puzzle.words.map((placed) => placed.word.letters.length), puzzle.secret ? puzzle.secret.word.letters.length : 0);
+  // Docked: the word panel is a column beside the board (landscape); boardRight is where the board's view ends.
+  let docked = false, boardRight = window.innerWidth, showingTutorial = false;
   let view, panelOpen = false, paused = false, overlay = null, frame = 0, last = 0, overFor = 0, resultShown = false;
   let hinted = null, hintAge = HINT_TIME, hints = null, hintsRevealed = 1, started = false;
   const elements = {};
@@ -783,26 +1006,56 @@ function puzzleScreen(game) {
   // -- Layout --
 
   function layout() {
-    const bar = elements.bar.offsetHeight;
-    const head = elements.panel.querySelector(".head").offsetHeight + parseFloat(getComputedStyle(elements.panel).paddingBottom || 0);
-    view.setView(0, bar, window.innerWidth, window.innerHeight - bar - head);
-    if (elements.minimap) elements.minimap.style.top = `${bar + 8}px`;
+    const bar = elements.bar.offsetHeight, width = window.innerWidth, height = window.innerHeight;
+    const wasDocked = docked;
+    docked = width > height;
+    elements.root.classList.toggle("docked", docked);
+    view.startWidth = Math.min(width, height);
+    if (docked) {
+      const panelWidth = Math.min(Math.max(width * PANEL_SHARE, MIN_PANEL_WIDTH), MAX_PANEL_WIDTH);
+      boardRight = width - panelWidth;
+      elements.panel.style.top = `${bar}px`;
+      elements.panel.style.width = `${panelWidth}px`;
+      view.setView(0, bar, boardRight, height - bar);
+    } else {
+      boardRight = width;
+      elements.panel.style.top = elements.panel.style.width = "";
+      const head = elements.panel.querySelector(".head").offsetHeight + parseFloat(getComputedStyle(elements.panel).paddingBottom || 0);
+      view.setView(0, bar, width, height - bar - head);
+    }
+    if (docked !== wasDocked && started) renderPanel();
+    if (docked && showingTutorial) closeTutorial();
+    if (elements.minimap) {
+      elements.minimap.style.top = `${bar + 8}px`;
+      elements.minimap.style.right = `${width - boardRight + 8}px`;
+    }
     placeClear();
     view.dirty = true;
   }
 
   function placeClear() {
     const clear = elements.clear;
-    const bottom = view.view.y + view.view.h;
-    const radius = 28, margin = 14;
+    const margin = 14;
+    if (docked) {
+      // At the right end of the docked panel's header, where it covers nothing.
+      const radius = DOCKED_CLEAR_RADIUS;
+      clear.style.width = clear.style.height = `${2 * radius}px`;
+      clear.style.left = `${window.innerWidth - margin - 2 * radius}px`;
+      clear.style.top = `${view.view.y + 26 - radius}px`;
+      clear.classList.toggle("hidden", !settings.clearButton || selection.length < 2);
+      return;
+    }
+    const bottom = showingTutorial ? elements.tutorial.offsetTop : view.view.y + view.view.h;
+    const radius = CLEAR_RADIUS;
+    clear.style.width = clear.style.height = `${2 * radius}px`;
     const y = bottom - margin - radius;
-    const right = window.innerWidth - margin - radius, left = margin + radius;
+    const right = boardRight - margin - radius, left = margin + radius;
     const stuck = (x, onRight) => {
       const topLeft = view.toScreen(0, 0), bottomRight = view.toScreen(puzzle.grid.width, puzzle.grid.height);
       if (x + radius <= topLeft.x || x - radius >= bottomRight.x || y + radius <= topLeft.y || y - radius >= bottomRight.y) return false;
       const slack = view.zoom / 2;
       const bottomInView = bottomRight.y <= bottom + slack;
-      const sideInView = onRight ? bottomRight.x <= window.innerWidth + slack : topLeft.x >= -slack;
+      const sideInView = onRight ? bottomRight.x <= boardRight + slack : topLeft.x >= -slack;
       return bottomInView && sideInView;
     };
     const rightFree = !stuck(right, true), leftFree = !stuck(left, false);
@@ -820,8 +1073,10 @@ function puzzleScreen(game) {
     if (state.isOver && (!puzzle.secret || state.secretFound)) return;
     const at = selection.findIndex((c) => c.row === cell.row && c.col === cell.col);
     const added = at < 0;
-    if (added) selection.push(cell);
-    else selection.splice(at, 1);
+    if (added) {
+      selection.push(cell);
+      if (selection.length > longest) view.animator.setSelected(selection.shift(), false);
+    } else selection.splice(at, 1);
     view.animator.setSelected(cell, added);
     view.dirty = true;
     play("tick", added ? -0.4 + 0.06 * selection.length : -0.7);
@@ -834,7 +1089,8 @@ function puzzleScreen(game) {
       if (secret) foundSecret(secret);
       return;
     }
-    selection.length = 0;
+    // Letters tapped by mistake are deselected with it.
+    deselectAll();
     view.animator.found(placed.cells, foundColor(state.found.length - 1));
     if (hinted && hinted.word === placed.word) hintAge = HINT_TIME;
     if (!state.isComplete) {
@@ -847,7 +1103,7 @@ function puzzleScreen(game) {
   }
 
   function foundSecret(secret) {
-    selection.length = 0;
+    deselectAll();
     hints = null;
     view.animator.found(secret.cells, WORDITTO_COLOR);
     confetti(GOLD);
@@ -870,9 +1126,13 @@ function puzzleScreen(game) {
     saveGame();
   }
 
-  function clearSelection() {
+  function deselectAll() {
     for (const cell of selection) view.animator.setSelected(cell, false);
     selection.length = 0;
+  }
+
+  function clearSelection() {
+    deselectAll();
     play("tick", -0.7);
     view.dirty = true;
     placeClear();
@@ -884,7 +1144,7 @@ function puzzleScreen(game) {
     if (!placed) return;
     hinted = placed;
     hintAge = 0;
-    view.glideTo(placed.cells[0], Math.max(view.zoom, view.view.w / HINT_CELLS_ACROSS));
+    view.glideTo(placed.cells[0], Math.max(view.zoom, view.startWidth / HINT_CELLS_ACROSS));
     play("hint");
     updateBar();
     saveGame();
@@ -970,20 +1230,177 @@ function puzzleScreen(game) {
 
   // -- Help shown once: how to play (first stage) and how snakes go (their challenges) --
 
+  /** The first stage's window, in three pages: tapping a word's letters, dragging the board and zooming it. */
+  function showBasics() {
+    const touch = matchMedia("(pointer: coarse)").matches;
+    const pages = [
+      [tr("Encontrar palabras"), tr(touch ? "Toca las letras de una palabra, una a una. En cuanto estén todas, la palabra cuenta sola: no hay que pulsar nada más."
+        : "Haz clic en las letras de una palabra, una a una. En cuanto estén todas, la palabra cuenta sola: no hay que pulsar nada más."), drawTapping],
+      [tr("Mover el tablero"), tr(touch ? "El tablero es más grande que la pantalla: arrástralo con un dedo para ver el resto."
+        : "El tablero es más grande que la ventana: arrástralo con el ratón para ver el resto."), drawDragging],
+      [tr("Acercar y alejar"), tr(touch ? "Pellizca con dos dedos para acercar o alejar el tablero: sepáralos para ver las letras más grandes y júntalos para ver más tablero."
+        : "Usa la rueda del ratón para acercar o alejar el tablero: las letras se ven más grandes o se ve más tablero."), drawZooming],
+    ];
+    paused = true;
+    const showPage = (page) => {
+      const [heading, rule, draw] = pages[page];
+      const canvas = el("canvas.help-board", { width: HELP_SIDE * HELP_CELL * 2, height: HELP_SIDE * HELP_CELL * 2 });
+      showOverlay(el("div.help-box", {},
+        title("h3", heading),
+        canvas,
+        el("p", {}, rule),
+        el("div.help-foot", {},
+          el("span", {}, `${page + 1}/${pages.length}`),
+          button(page < pages.length - 1 ? tr("Siguiente") : tr("Entendido"), () => {
+            if (page < pages.length - 1) {
+              showPage(page + 1);
+              return;
+            }
+            settings.tutorialDone = true;
+            saveSettings();
+            hideOverlay();
+            showTutorial();
+          }))));
+      const ctx = canvas.getContext("2d");
+      ctx.scale(2, 2);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      let begin = 0;
+      const step = (now) => {
+        if (!canvas.isConnected) return;
+        if (!begin) begin = now;
+        draw(ctx, (now - begin) / 1000, touch);
+        requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    };
+    showPage(0);
+  }
+
+  const smooth = (x) => x * x * (3 - 2 * x);
+
+  function drawHelpLetter(ctx, letter, x, y, size, color) {
+    ctx.font = `${size}px "Ubuntu Mono", monospace`;
+    ctx.fillStyle = color;
+    ctx.fillText(letter, x, y + size * 0.04);
+  }
+
+  function drawFinger(ctx, x, y, pressing) {
+    const radius = HELP_CELL * (pressing ? 0.3 : 0.36);
+    const disc = (dx, dy, r, color) => {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x + dx, y + dy, r, 0, Math.PI * 2);
+      ctx.fill();
+    };
+    disc(2, 3, radius, "rgba(0,0,0,0.3)");
+    disc(0, 0, radius, "rgb(44,48,58)");
+    disc(0, 0, radius - 3, "rgba(255,255,255,0.92)");
+  }
+
+  const helpBoard = () => `rgb(${THEMES[settings.theme].board.join(",")})`;
+
+  /** A finger taps the word's letters in turn; each lights up, and the whole word turns found. */
+  function drawTapping(ctx, age) {
+    const word = tr("LETRA").slice(0, HELP_SIDE), cell = HELP_CELL, side = HELP_SIDE * cell;
+    ctx.fillStyle = helpBoard();
+    ctx.fillRect(0, 0, side, side);
+    const t = age % (word.length * STEP_TIME + HOLD_TIME);
+    const tapped = Math.min(word.length, Math.floor(t / STEP_TIME + 0.25));
+    const complete = tapped === word.length;
+    const first = Math.floor((HELP_SIDE - word.length) / 2);
+    const center = (col) => [(col + 0.5) * cell, (HELP_WORD_ROW + 0.5) * cell];
+    const color = complete ? foundColor(0) : selectionColor;
+    for (let i = 0; i < tapped; i++) {
+      const [x, y] = center(first + i);
+      ctx.fillStyle = `rgb(${color.join(",")})`;
+      ctx.beginPath();
+      ctx.arc(x, y, cell * 0.42, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    for (let row = 0; row < HELP_SIDE; row++) {
+      for (let col = 0; col < HELP_SIDE; col++) {
+        const index = row === HELP_WORD_ROW ? col - first : -1;
+        const inWord = index >= 0 && index < word.length;
+        const letter = inWord ? word[index] : HELP_FILLER[row * HELP_SIDE + col];
+        drawHelpLetter(ctx, letter, (col + 0.5) * cell, (row + 0.5) * cell, cell * 0.6,
+          inWord && index < tapped ? `rgb(${letterOn(color).join(",")})` : "rgb(44,48,58)");
+      }
+    }
+    if (complete) return;
+    const stepAt = Math.floor(t / STEP_TIME), within = t / STEP_TIME - stepAt;
+    const [toX, toY] = center(first + Math.min(stepAt, word.length - 1));
+    const [fromX, fromY] = stepAt === 0 ? [side * 0.5, side + cell * 0.6] : center(first + stepAt - 1);
+    const move = smooth(Math.min(1, within / 0.55));
+    drawFinger(ctx, fromX + (toX - fromX) * move + cell * 0.18, fromY + (toY - fromY) * move + cell * 0.22, within > 0.6 && within < 0.85);
+  }
+
+  /** How far along a there-and-back movement is, and whether it is moving now (not at a pause). */
+  function helpSwing(age, time) {
+    const t = age % (2 * (time + REST_TIME));
+    const along = t < time ? smooth(t / time) : t < time + REST_TIME ? 1 : t < 2 * time + REST_TIME ? 1 - smooth((t - time - REST_TIME) / time) : 0;
+    return [along, t < time || (t >= time + REST_TIME && t < 2 * time + REST_TIME)];
+  }
+
+  /** A board bigger than its window, dragged by a finger to show its far corner, and back. */
+  function drawDragging(ctx, age) {
+    const cell = HELP_CELL, side = HELP_SIDE * cell;
+    const [along, moving] = helpSwing(age, DRAG_TIME);
+    const offset = (HELP_BIG_SIDE - HELP_SIDE) * cell * along;
+    ctx.fillStyle = helpBoard();
+    ctx.fillRect(0, 0, side, side);
+    for (let row = 0; row < HELP_BIG_SIDE; row++) {
+      for (let col = 0; col < HELP_BIG_SIDE; col++) {
+        drawHelpLetter(ctx, HELP_FILLER[(row * HELP_BIG_SIDE + col) % HELP_FILLER.length], (col + 0.5) * cell - offset, (row + 0.5) * cell - offset, cell * 0.6, "rgb(44,48,58)");
+      }
+    }
+    drawFinger(ctx, side * 0.72 - offset * 0.85, side * 0.72 - offset * 0.85, moving);
+  }
+
+  /** The board grows around its middle and shrinks back, while two fingers (on a phone) move apart and together. */
+  function drawZooming(ctx, age, touch) {
+    const cell = HELP_CELL, side = HELP_SIDE * cell;
+    const [along, moving] = helpSwing(age, ZOOM_TIME);
+    const zoomed = cell * (1 + (HELP_MAX_ZOOM - 1) * along);
+    ctx.fillStyle = helpBoard();
+    ctx.fillRect(0, 0, side, side);
+    for (let row = 0; row < HELP_SIDE; row++) {
+      for (let col = 0; col < HELP_SIDE; col++) {
+        drawHelpLetter(ctx, HELP_FILLER[(row * HELP_SIDE + col + 7) % HELP_FILLER.length],
+          side / 2 + (col + 0.5 - HELP_SIDE / 2) * zoomed, side / 2 + (row + 0.5 - HELP_SIDE / 2) * zoomed, zoomed * 0.6, "rgb(44,48,58)");
+      }
+    }
+    if (!touch) return;
+    const apart = side * (0.14 + 0.2 * along);
+    drawFinger(ctx, side / 2 - apart, side / 2 - apart, moving);
+    drawFinger(ctx, side / 2 + apart, side / 2 + apart, moving);
+  }
+
+  /** After the window, its first step on the real screen: opening the word list (docked, it is always open). */
+  function showTutorial() {
+    if (docked) return;
+    const touch = matchMedia("(pointer: coarse)").matches;
+    showingTutorial = true;
+    elements.tutorial = el("div.tutorial", {},
+      el("p", {}, tr(touch ? "Toca «Palabras», abajo, para ver las palabras que hay que buscar." : "Haz clic en «Palabras», abajo, para ver las palabras que hay que buscar.")),
+      button(tr("Siguiente"), closeTutorial));
+    elements.root.append(elements.tutorial);
+    placeClear();
+  }
+
+  function closeTutorial() {
+    if (!showingTutorial) return;
+    showingTutorial = false;
+    elements.tutorial.remove();
+    placeClear();
+  }
+
   function helpFirst() {
     if (game.solved || game.restore) return;
-    const touch = matchMedia("(pointer: coarse)").matches;
     let title = null, texts = null, done = null;
     if (game.world === 0 && game.stage === 0 && !settings.tutorialDone) {
-      title = tr("Cómo se juega");
-      texts = touch
-        ? ["Toca «Palabras», abajo, para ver las palabras que hay que buscar.",
-          "Toca una a una las letras de una de ellas. Si te equivocas, toca otra vez una letra para quitarla.",
-          "El tablero es más grande que la pantalla: arrástralo con un dedo y pellizca con dos para acercarlo o alejarlo."]
-        : ["Haz clic en «Palabras», abajo, para ver las palabras que hay que buscar.",
-          "Haz clic una a una en las letras de una de ellas. Si te equivocas, haz clic otra vez en una letra para quitarla.",
-          "El tablero es más grande que la ventana: arrástralo con el ratón y acércalo o aléjalo con la rueda."];
-      done = () => (settings.tutorialDone = true);
+      showBasics();
+      return;
     } else if (worldId && (puzzle.spec.shapes & (core.Shape.Snake | core.Shape.SnakeOrthogonal)) && !settings.helpsSeen.includes(worldId)) {
       title = tr("Palabras en serpiente");
       texts = [puzzle.spec.shapes & core.Shape.Snake
@@ -1008,13 +1425,17 @@ function puzzleScreen(game) {
 
   function renderPanel() {
     const panel = elements.panel;
-    panel.classList.toggle("open", panelOpen);
+    const open = panelOpen || docked;
+    panel.classList.toggle("open", open);
     const head = panel.querySelector(".head");
+    // At the bottom, the bar also shows the next word to find; docked, the panel neither unfolds nor folds.
+    const next = !docked && !hints ? wordGroups().flatMap((group) => group.words).find((word) => !state.isFound(word)) : null;
     head.replaceChildren(
-      el("span", {}, hints ? tr("Pistas del Worditto") : tr("Palabras {0}/{1}", state.found.length, state.wordCount)),
-      el("span.act", {}, panelOpen ? tr("ocultar") : tr("ver")));
+      el(`span.count${state.isComplete ? ".complete" : ""}`, {}, hints ? tr("Pistas del Worditto") : tr("Palabras {0}/{1}", state.found.length, state.wordCount)),
+      el("span.next", {}, next ? boardText(next.text, kind) : null),
+      el("span.act", {}, docked ? "" : panelOpen ? tr("ocultar") : tr("ver")));
     const list = panel.querySelector(".words");
-    if (!panelOpen) {
+    if (!open) {
       list.replaceChildren();
       return;
     }
@@ -1027,6 +1448,16 @@ function puzzleScreen(game) {
       );
       return;
     }
+    const symbols = kind === core.BoardKind.Symbols;
+    list.replaceChildren(...wordGroups().map((group) => [
+      el("h4", {}, group.id === core.INVENTED_CATEGORY ? tr("Palabras inventadas") : bank.contains(group.id) ? bank.get(group.id).name : group.id),
+      el(`ul${symbols ? ".one.big" : ""}`, {}, group.words
+        .map((word) => el(`li${state.isFound(word) ? ".found" : ""}`, {}, boardText(word.text, kind)))),
+    ]).flat());
+  }
+
+  /** The words by category, as the list shows them. */
+  function wordGroups() {
     const groups = [];
     for (const placed of puzzle.words) {
       let group = groups.find((g) => g.id === placed.word.category);
@@ -1034,12 +1465,8 @@ function puzzleScreen(game) {
       group.words.push(placed.word);
     }
     const collator = new Intl.Collator("es", { sensitivity: "base" });
-    const symbols = kind === core.BoardKind.Symbols;
-    list.replaceChildren(...groups.map((group) => [
-      el("h4", {}, group.id === core.INVENTED_CATEGORY ? tr("Palabras inventadas") : bank.contains(group.id) ? bank.get(group.id).name : group.id),
-      el(`ul${symbols ? ".one.big" : ""}`, {}, group.words.slice().sort((a, b) => collator.compare(a.text, b.text))
-        .map((word) => el(`li${state.isFound(word) ? ".found" : ""}`, {}, boardText(word.text, kind)))),
-    ]).flat());
+    for (const group of groups) group.words.sort((a, b) => collator.compare(a.text, b.text));
+    return groups;
   }
 
   // -- Each frame --
@@ -1076,7 +1503,7 @@ function puzzleScreen(game) {
       view.dirty = true;
     }
     if (elements.minimap) {
-      const shown = !panelOpen && view.minimapWanted();
+      const shown = !(panelOpen && !docked) && view.minimapWanted();
       elements.minimap.classList.toggle("hidden", !shown);
     }
     if (view.dirty) placeClear();
@@ -1171,8 +1598,17 @@ function puzzleScreen(game) {
       elements.bar = el("div.pbar", {}, home, elements.hint, el("span.title", {}, game.title), elements.time);
       elements.clear = el("button.clear.hidden", { onclick: clearSelection, "aria-label": tr("Borrar") });
       elements.clear.innerHTML = BROOM;
+      elements.clear.append(sticker(SLEEPING));
       elements.panel = el("div.wpanel", {},
-        el("button.head", { onclick: () => { panelOpen = !panelOpen; renderPanel(); placeClear(); } }),
+        el("button.head", {
+          onclick: () => {
+            if (docked) return;
+            panelOpen = !panelOpen;
+            if (panelOpen) closeTutorial();
+            renderPanel();
+            placeClear();
+          },
+        }),
         el("div.words"));
       elements.minimap = minimap;
       elements.root = el("div.puzzle", {}, canvas, elements.bar, minimap, elements.clear, elements.panel);
@@ -1185,6 +1621,8 @@ function puzzleScreen(game) {
           letterHeight: LETTER_HEIGHTS[settings.letterSize] ?? LETTER_HEIGHTS[0],
           cellsAcross: CELLS_ACROSS[settings.letterSize] ?? CELLS_ACROSS[0],
           selectionColor, emojiAtlas, emojiColumns: emoji.columns, onTap,
+          startWidth: Math.min(window.innerWidth, window.innerHeight),
+          colors: THEMES[settings.theme],
         });
         if (minimap) bindMinimap(minimap);
       }
@@ -1250,8 +1688,9 @@ function puzzleScreen(game) {
 
 async function start() {
   settings = load("settings", {
-    language: "", sound: true, vibration: true, clearButton: true, letterSize: 0, selectionColor: 0, palette: 0, tutorialDone: false, helpsSeen: [],
+    language: "", sound: true, vibration: true, clearButton: true, letterSize: 0, selectionColor: 0, palette: 0, theme: DEFAULT_THEME, tutorialDone: false, helpsSeen: [],
   });
+  useTheme(settings.theme);
   progress = load("progress", { bestTimes: {}, wordittos: [] });
   custom = load("custom", core.defaultCustom());
   saved = load("saved", null);
@@ -1261,6 +1700,7 @@ async function start() {
   const [strings, emojiData, worldsData] = await Promise.all([
     fetchJson("content/strings.json"), fetchJson("content/emoji.json"), fetchJson("content/worlds.json"),
     document.fonts ? document.fonts.load('20px "Ubuntu Mono"').catch(() => null) : null,
+    document.fonts ? document.fonts.load('bold 20px "Baloo 2"').catch(() => null) : null,
   ]);
   content.strings = strings;
   emoji = core.makeEmojiCatalog(emojiData);

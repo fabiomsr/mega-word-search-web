@@ -14,7 +14,7 @@ The game remade in plain JavaScript (no build step): challenges, custom games, W
 
 - `play/js/core.js`: the model and the generator, ported from the game's `MegaWordSearch.Core` (with .NET's `System.Random`), so the same options and seed give the same board as the app.
 - `play/js/board.js`: the board on a canvas (drag, pinch or wheel to zoom, taps to select letters, minimap); `play/js/app.js`: the screens; `play/js/sound.js`: the sounds.
-- `play/content/` and `play/fonts/`: words, challenges, emoji, Wordittos, texts and fonts, copied from the game by `python3 tools/sync-play-content.py [path to the game]` (default `../mega-word-search-game`; macOS, it scales the Wordittos down with `sips`). Run it again whenever the game's content changes.
+- `play/content/` and `play/fonts/`: words, challenges, emoji, Wordittos, the cats theme's stickers, texts and fonts, copied from the game by `python3 tools/sync-play-content.py [path to the game]` (default `../mega-word-search-game`; macOS, it scales the Wordittos and the stickers down with `sips`). Run it again whenever the game's content changes.
 - `tools/check-generator.sh [path to the game]` (macOS, needs .NET) generates every stage in the three languages and some custom games with the game's `tools/PrintPuzzle` and with `core.js`, and checks they are the same boards. Run it after changing the game's generator or words.
 
 To try it locally (ES modules need a server):

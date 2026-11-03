@@ -5,7 +5,7 @@
 
 The game's repository defaults to ../mega-word-search-game. JSON files lose their // comments; each language's
 words go in one file (play/content/words-<lang>.json, categories in order); the Wordittos atlas is scaled down to
-128 px per picture (sips, macOS); the English and German texts are read from Model/Strings.cs.
+128 px per picture and the cats theme's stickers likewise (sips, macOS); the English and German texts are read from Model/Strings.cs.
 """
 import json
 import os
@@ -23,6 +23,7 @@ OUT = os.path.join(SITE, "play", "content")
 FONTS = os.path.join(SITE, "play", "fonts")
 LANGUAGES = ["es", "en", "de"]
 WORDITTO_SIZE = 128
+STICKER_SIZE = 128
 
 
 def read_json(path):
@@ -49,6 +50,12 @@ def strings():
     return tables
 
 
+def scale_atlas(atlas, size, name):
+    width = int(subprocess.check_output(["sips", "-g", "pixelWidth", atlas], text=True).split()[-1])
+    subprocess.run(["sips", "--resampleWidth", str(width * size // 256), atlas, "--out", os.path.join(OUT, name)],
+                   check=True, stdout=subprocess.DEVNULL)
+
+
 def main():
     if not os.path.isdir(CONTENT):
         sys.exit(f"no game content in {CONTENT}")
@@ -68,13 +75,11 @@ def main():
     shutil.copy(os.path.join(CONTENT, "emoji", "emoji-atlas.png"), OUT)
     shutil.copy(os.path.join(CONTENT, "emoji", "LICENSE-NotoEmoji.txt"), OUT)
 
-    # 10 pictures a row of 256 px: scaled to WORDITTO_SIZE.
-    atlas = os.path.join(CONTENT, "wordittos", "wordittos.png")
-    width = int(subprocess.check_output(["sips", "-g", "pixelWidth", atlas], text=True).split()[-1])
-    subprocess.run(["sips", "--resampleWidth", str(width * WORDITTO_SIZE // 256), atlas, "--out", os.path.join(OUT, "wordittos.png")],
-                   check=True, stdout=subprocess.DEVNULL)
+    # Pictures of 256 px, 10 a row and 6 a row: scaled to WORDITTO_SIZE and STICKER_SIZE.
+    scale_atlas(os.path.join(CONTENT, "wordittos", "wordittos.png"), WORDITTO_SIZE, "wordittos.png")
+    scale_atlas(os.path.join(CONTENT, "themes", "cats", "stickers.png"), STICKER_SIZE, "stickers.png")
 
-    for name in ("UbuntuMono-Regular.ttf", "UFL.txt", "NotoSansSymbols2-Regular.ttf", "OFL-NotoSansSymbols2.txt"):
+    for name in ("UbuntuMono-Regular.ttf", "UFL.txt", "NotoSansSymbols2-Regular.ttf", "OFL-NotoSansSymbols2.txt", "Baloo2-Bold.ttf", "OFL-Baloo2.txt"):
         shutil.copy(os.path.join(CONTENT, "fonts", name), FONTS)
     print(f"Copied the content of {GAME} into play/")
 

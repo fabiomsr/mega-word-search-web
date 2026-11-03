@@ -4,6 +4,13 @@
   src: url("fonts/UbuntuMono-Regular.ttf") format("truetype");
   font-display: block;
 }
+/* Titles and big buttons in the cats theme. */
+@font-face {
+  font-family: "Baloo 2";
+  src: url("fonts/Baloo2-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-display: swap;
+}
 /* Only for the symbols of symbol boards, which the game draws with this font too. */
 @font-face {
   font-family: "Noto Sans Symbols 2";
@@ -24,8 +31,32 @@
   --warning: #ff7864;
   --worditto: #b8860b;
   --board: #f6f1e4;
+  --resume: #3468a8;
+  --overlay: rgba(24, 32, 48, 0.94);
+  --radius: 0;
+  --small-radius: 0;
   --font: "Ubuntu Mono", ui-monospace, Menlo, Consolas, monospace;
+  --display: var(--font);
   color-scheme: dark;
+}
+
+/* The cats theme (UI/Theme.cs): a deeper navy, brighter blue buttons, lavender subtexts, rounded corners and kittens. */
+:root[data-theme="cats"] {
+  --bg: #10243f;
+  --title: #ffd966;
+  --dim: #8fa6e0;
+  --button: #2e8bd8;
+  --disabled: #233a57;
+  --off: #2f4f73;
+  --done: #2f9563;
+  --panel: #1a3252;
+  --board: #f7f3e9;
+  --resume: #fc5185;
+  --overlay: rgba(16, 36, 63, 0.94);
+  --radius: 10px;
+  --small-radius: 8px;
+  --outline: #0a1630;
+  --display: "Baloo 2", var(--font);
 }
 
 * { box-sizing: border-box; }
@@ -42,7 +73,34 @@ html, body {
 
 button { font: inherit; color: inherit; }
 
-#app { height: 100%; }
+#app { position: relative; z-index: 1; height: 100%; }
+
+/* Paw prints on the background, behind the screens. */
+#paws { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; fill: #3f5fc8; opacity: 0.55; pointer-events: none; }
+
+/* A kitten from the sheet: 6 a row, 5 rows. Only the cats theme shows them. */
+.sticker {
+  display: none;
+  background: url("content/stickers.png") no-repeat;
+  background-size: 600% 500%;
+  pointer-events: none;
+}
+[data-theme="cats"] .sticker { display: inline-block; }
+.under-menu { width: 120px; height: 120px; margin: 12px auto 0; }
+[data-theme="cats"] .under-menu, [data-theme="cats"] .over-back { display: block; }
+.over-back { width: 120px; height: 120px; margin: 4px auto -14px; }
+.back-gap { height: 24px; }
+[data-theme="cats"] .back-gap { display: none; }
+.section-title .face { width: 26px; height: 26px; vertical-align: -6px; margin-right: 6px; }
+
+/* A title's rays, on both sides of it: only in the cats theme, and if they fit (fitRays in app.js). */
+.rayed .t { position: relative; display: inline-block; }
+.rays-left, .rays-right { display: none; position: absolute; top: 50%; color: inherit; }
+.rays-left svg, .rays-right svg { display: block; width: 0.8em; height: 1em; fill: none; stroke: currentColor; stroke-width: 9; stroke-linecap: round; overflow: visible; }
+.rays-left { right: 100%; transform: translateY(-50%) scaleX(-1); }
+.rays-right { left: 100%; transform: translateY(-50%); }
+[data-theme="cats"] .rays-left, [data-theme="cats"] .rays-right { display: block; }
+[data-theme="cats"] .no-rays .rays-left, [data-theme="cats"] .no-rays .rays-right { display: none; }
 
 .loading { text-align: center; color: var(--dim); padding-top: 40vh; margin: 0; }
 
@@ -65,6 +123,7 @@ button { font: inherit; color: inherit; }
   padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
 }
 .column { max-width: 520px; margin: 0 auto; }
+.column.wide { max-width: 1040px; }
 
 .screen h1 {
   color: var(--title);
@@ -75,6 +134,21 @@ button { font: inherit; color: inherit; }
   line-height: 1.1;
 }
 .screen .subtitle { color: var(--dim); text-align: center; margin: 0 0 32px; font-size: 20px; }
+.screen .subtitle.tight { margin-bottom: 16px; }
+
+[data-theme="cats"] .screen h1, [data-theme="cats"] .topbar h2, [data-theme="cats"] .overlay h2, [data-theme="cats"] .overlay h3 {
+  font-family: var(--display);
+  font-weight: 700;
+  -webkit-text-stroke: 0.14em var(--outline);
+  paint-order: stroke fill;
+}
+
+/* The home screen's name: in the cats theme, two lines of bubble letters. */
+[data-theme="cats"] .screen .home-title { margin-top: 3vh; -webkit-text-stroke: 0; }
+[data-theme="cats"] .home-title .mega, [data-theme="cats"] .home-title .name { display: block; -webkit-text-stroke: 0.16em var(--outline); paint-order: stroke fill; }
+[data-theme="cats"] .home-title .mega { font-size: min(80px, 20vw); line-height: 1; }
+[data-theme="cats"] .home-title .mega svg { font-size: 0.6em; }
+[data-theme="cats"] .home-title .name { font-size: min(64px, 14.5vw); line-height: 1.05; color: #fff; }
 
 .menu { display: flex; flex-direction: column; gap: 14px; max-width: 360px; margin: 0 auto; }
 
@@ -82,7 +156,7 @@ button { font: inherit; color: inherit; }
   display: block;
   width: 100%;
   border: 0;
-  border-radius: 0;
+  border-radius: var(--radius);
   background: var(--button);
   color: var(--text);
   padding: 14px 12px;
@@ -96,6 +170,20 @@ button { font: inherit; color: inherit; }
 .btn:disabled { background: var(--disabled); color: var(--dim); cursor: default; }
 .btn.done { background: var(--done); }
 .btn.secondary { background: var(--off); }
+.btn.resume { background: var(--resume); }
+.screen .menu .btn { font-family: var(--display); font-weight: 700; }
+.screen .menu .btn small { font-family: var(--font); font-weight: normal; }
+/* The first home button hops now and then (UI/Bounce.cs), in a theme with kittens. */
+[data-theme="cats"] .menu.home .btn:first-child { animation: hop 2.6s 0.8s infinite; }
+@keyframes hop {
+  0%, 17.3% { transform: translateY(0); animation-timing-function: cubic-bezier(0.3, 0.6, 0.6, 1); }
+  8.65% { transform: translateY(-7px); animation-timing-function: cubic-bezier(0.4, 0, 0.7, 0.4); }
+  23% { transform: translateY(-2.1px); animation-timing-function: cubic-bezier(0.4, 0, 0.7, 0.4); }
+  28.8%, 100% { transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-theme="cats"] .menu.home .btn:first-child { animation: none; }
+}
 .btn small { display: block; font-size: 15px; color: #c8d2e4; margin-top: 2px; }
 .btn:disabled small { color: var(--dim); }
 
@@ -111,12 +199,17 @@ button { font: inherit; color: inherit; }
   padding: max(8px, env(safe-area-inset-top)) 8px 8px;
   background: var(--bg);
 }
+/* Taller in a theme with kittens, for the one holding on to the back button. */
+[data-theme="cats"] .topbar { padding-top: max(40px, env(safe-area-inset-top)); align-items: end; }
+[data-theme="cats"] .topbar .icon-btn { height: 38px; }
 .topbar h2 { margin: 0; text-align: center; color: var(--title); font-weight: normal; font-size: 30px; }
 .topbar .count { color: var(--dim); text-align: right; font-size: 18px; padding-right: 4px; }
 .icon-btn {
+  position: relative;
   width: 56px;
   height: 48px;
   border: 0;
+  border-radius: var(--radius);
   background: var(--button);
   color: var(--text);
   font-size: 24px;
@@ -127,6 +220,44 @@ button { font: inherit; color: inherit; }
 }
 .icon-btn:disabled { background: var(--disabled); color: var(--dim); cursor: default; }
 .icon-btn svg { width: 30px; height: 30px; fill: currentColor; }
+.back .sticker { position: absolute; width: 59px; height: 59px; left: -1.5px; top: -40px; }
+
+/* The options' tabs, joined as one bar; the one shown in the continue button's colour. */
+.tabs { display: grid; grid-template-columns: 1fr 1fr; margin: 8px 0 14px; }
+.tab { border: 0; background: var(--off); color: var(--text); height: 40px; cursor: pointer; font-family: var(--display); font-weight: 700; font-size: 18px; }
+.tab.on { background: var(--resume); }
+.tab:first-child { border-radius: 5px 0 0 5px; }
+.tab:last-child { border-radius: 0 5px 5px 0; }
+:root:not([data-theme="cats"]) .tab { border-radius: 0; font-weight: normal; }
+
+/* The board as it will look, at this letter size and with these colours. */
+.sample { display: flex; justify-content: center; margin-top: 18px; }
+.sample .cell { display: grid; place-items: center; line-height: 1; }
+.sample .cell > span { display: grid; place-items: center; width: 86%; height: 86%; border-radius: 22%; }
+
+.links { display: flex; justify-content: center; gap: 12px; margin-top: 24px; }
+.links .opt { width: 150px; text-align: center; text-decoration: none; color: var(--text); display: grid; place-items: center; }
+
+/* More palettes: a line each. */
+.palettes { display: flex; flex-direction: column; gap: 8px; }
+.palette {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 76px;
+  padding: 4px 12px;
+  border: 0;
+  border-radius: var(--small-radius);
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+.palette.on { background: var(--button); }
+.palette .sticker { flex: none; width: 60px; height: 60px; }
+.palette .name { flex: 1; min-width: 0; }
+.palette .colors { flex: none; display: grid; grid-template-columns: repeat(4, 30px); gap: 4px; }
+.palette .colors span { display: grid; place-items: center; height: 30px; font-size: 19px; line-height: 1; }
 
 .section-title { color: var(--title); margin: 18px 0 8px; font-size: 20px; }
 
@@ -146,10 +277,13 @@ button { font: inherit; color: inherit; }
   cursor: pointer;
   min-height: 40px;
   overflow-wrap: anywhere;
+  border-radius: var(--small-radius);
 }
 .opt.on { background: var(--button); }
 .opt:hover { filter: brightness(1.12); }
 .swatch { display: inline-block; width: 14px; height: 14px; vertical-align: -1px; margin-right: 4px; }
+.swatches { display: grid; grid-template-columns: repeat(4, 12px); gap: 2px; justify-content: center; margin-bottom: 4px; }
+.swatches .swatch { display: block; width: 12px; height: 12px; margin: 0; }
 
 .seed-row { display: flex; align-items: center; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
 .seed-row .label { flex: 1; font-size: 22px; min-width: 150px; }
@@ -160,6 +294,7 @@ button { font: inherit; color: inherit; }
 .warning { color: var(--warning); text-align: center; font-size: 17px; min-height: 22px; }
 
 .wordittos-list { display: flex; flex-direction: column; gap: 8px; }
+.wordittos-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
 .wd-row {
   display: grid;
   grid-template-columns: 48px 72px 1fr auto;
@@ -167,6 +302,7 @@ button { font: inherit; color: inherit; }
   gap: 8px;
   background: var(--panel);
   border: 0;
+  border-radius: var(--small-radius);
   padding: 4px 12px;
   min-height: 80px;
   text-align: left;
@@ -237,13 +373,15 @@ button { font: inherit; color: inherit; }
   border: 0;
   background: var(--button);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-  z-index: 2;
+  z-index: 4;
+  padding: 0;
   cursor: pointer;
   display: grid;
   place-items: center;
   transition: transform 0.15s, opacity 0.15s;
 }
-.clear svg { width: 34px; height: 34px; fill: #fff; }
+.clear svg { width: 60%; height: 60%; fill: #fff; }
+.clear .sticker { position: absolute; width: 105%; height: 105%; left: -80%; top: 7.5%; }
 .clear.hidden { transform: scale(0.3); opacity: 0; pointer-events: none; }
 
 .wpanel {
@@ -256,6 +394,8 @@ button { font: inherit; color: inherit; }
   flex-direction: column;
   max-height: 50%;
 }
+.puzzle.docked .wpanel { left: auto; max-height: none; padding-right: env(safe-area-inset-right); }
+.puzzle.docked .wpanel .head { cursor: default; }
 .wpanel .head {
   height: 52px;
   flex: none;
@@ -268,9 +408,13 @@ button { font: inherit; color: inherit; }
   cursor: pointer;
   width: 100%;
   font-size: 20px;
+  gap: 16px;
 }
-.wpanel .head .act { color: var(--dim); }
-.wpanel .words { overflow-y: auto; padding: 0 16px 16px; display: none; touch-action: pan-y; }
+.wpanel .head .count { flex: none; }
+.wpanel .head .count.complete { color: var(--title); }
+.wpanel .head .next { flex: 1; min-width: 0; color: #fe4365; text-align: center; font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wpanel .head .act { flex: none; color: var(--dim); }
+.wpanel .words { overflow-y: auto; min-height: 0; padding: 0 16px 16px; display: none; touch-action: pan-y; }
 .wpanel.open .words { display: block; }
 .wpanel h4 { color: var(--title); font-weight: normal; margin: 6px 0 4px; font-size: 20px; }
 .wpanel ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; column-gap: 12px; }
@@ -279,14 +423,14 @@ button { font: inherit; color: inherit; }
 .wpanel ul.big li { font-size: 40px; line-height: 56px; }
 .wpanel li.found { color: var(--dim); text-decoration: line-through; }
 .wpanel .hints li { display: flex; align-items: center; gap: 12px; min-height: 44px; }
-.wpanel .eye { border: 0; background: var(--off); width: 44px; height: 36px; cursor: pointer; }
+.wpanel .eye { border-radius: var(--small-radius); border: 0; background: var(--off); width: 44px; height: 36px; cursor: pointer; }
 
 /* Pause, result and help: over the puzzle. */
 .overlay {
   position: absolute;
   inset: 0;
   z-index: 5;
-  background: rgba(24, 32, 48, 0.94);
+  background: var(--overlay);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -300,6 +444,18 @@ button { font: inherit; color: inherit; }
 .overlay p { margin: 4px 0; max-width: 460px; }
 .overlay .menu { width: 100%; margin-top: 24px; }
 .overlay.share { position: fixed; z-index: 9; }
+
+/* The first stage's help: an animated example, its rule and a button. */
+.help-box { width: 100%; max-width: 440px; background: var(--panel); border-top: 4px solid var(--title); padding: 16px 20px; border-radius: var(--small-radius); }
+.help-box h3 { color: var(--title); font-weight: normal; font-size: 30px; margin: 0 0 14px; }
+.help-board { display: block; width: min(260px, 60vh, 100%); aspect-ratio: 1; margin: 0 auto 14px; }
+.help-box p { margin: 0 auto; font-size: 18px; min-height: 5.2em; }
+.help-foot { display: grid; grid-template-columns: 1fr 180px 1fr; align-items: center; margin-top: 12px; color: var(--dim); text-align: left; font-size: 16px; }
+.help-foot .btn { grid-column: 2; font-size: 18px; padding: 10px; }
+.help-foot span { grid-row: 1; grid-column: 1; }
+.tutorial { position: absolute; left: 12px; right: 12px; bottom: calc(64px + env(safe-area-inset-bottom)); z-index: 2; background: var(--panel); border-top: 3px solid var(--title); padding: 12px 16px; border-radius: var(--small-radius); display: flex; flex-direction: column; gap: 10px; }
+.tutorial p { margin: 0; font-size: 18px; }
+.tutorial .btn { align-self: flex-end; width: 128px; font-size: 17px; padding: 7px; }
 .share-link { width: 100%; max-width: 460px; margin-top: 12px; padding: 10px; font: 16px var(--font); background: var(--panel); color: var(--text); border: 1px solid var(--button); }
 .toast {
   position: fixed;
