@@ -19,6 +19,9 @@ const MISSING_COLOR = [84, 96, 120];
 const TITLE_COLOR = [255, 214, 102];
 const GOLD = ["#b8860b", "#ffc107", "#ffd54f", "#fff176"];
 const PLAY_STORE = "https://play.google.com/store/apps/details?id=com.sglora.megawordsearch";
+const APP_STORE = "https://apps.apple.com/app/id6826357808";
+// On an iPhone or iPad (iPadOS says it is a Mac, but with touch), the App Store; elsewhere, Google Play.
+const APPLE = /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
 
 // The options' colours (Model/ColorChoices.cs).
 const SELECTION_COLORS = [["Azul", 0x346ed2], ["Verde", 0x2e9650], ["Morado", 0x7e57c2], ["Naranja", 0xe6781e], ["Rosa", 0xd84380], ["Gris", 0x5a6478]];
@@ -106,6 +109,7 @@ const WEB_STRINGS = {
     "Copia este enlace para compartir la sopa:": "Copy this link to share the puzzle:",
     "Este enlace no tiene una partida válida": "This link has no valid game",
     "Mega Word Search para Android": "Mega Word Search for Android",
+    "Mega Word Search para iPhone y iPad": "Mega Word Search for iPhone and iPad",
     "Volver a la web": "Back to the website",
     "Cómo se juega": "How to play",
     "Wordittos": "Wordittos",
@@ -117,6 +121,7 @@ const WEB_STRINGS = {
     "Copia este enlace para compartir la sopa:": "Kopiere diesen Link, um das Rätsel zu teilen:",
     "Este enlace no tiene una partida válida": "Dieser Link enthält kein gültiges Spiel",
     "Mega Word Search para Android": "Mega Word Search für Android",
+    "Mega Word Search para iPhone y iPad": "Mega Word Search für iPhone und iPad",
     "Volver a la web": "Zurück zur Website",
     "Cómo se juega": "So wird gespielt",
     "Wordittos": "Wordittos",
@@ -431,7 +436,8 @@ function homeScreen() {
           ),
           sticker(SLEEPING, "under-menu"),
           el("p.subtitle", { style: { marginTop: "24px", fontSize: "16px" } },
-            el("a", { href: PLAY_STORE, style: { color: "var(--title)" } }, tr("Mega Word Search para Android")),
+            el("a", { href: APPLE ? APP_STORE : PLAY_STORE, style: { color: "var(--title)" } },
+              APPLE ? tr("Mega Word Search para iPhone y iPad") : tr("Mega Word Search para Android")),
             " · ",
             el("a", { href: "../", style: { color: "var(--dim)" } }, tr("Volver a la web")),
           ),
@@ -658,7 +664,7 @@ function optionsScreen() {
           optionsTab === 0 ? [optionRows(lookSections()), lettersSample()] : [
             optionRows(generalSections()),
             el("div.links", {},
-              el("a.opt", { href: PLAY_STORE }, tr("Valóranos")),
+              el("a.opt", { href: APPLE ? `${APP_STORE}?action=write-review` : PLAY_STORE }, tr("Valóranos")),
               el("a.opt", { href: `../privacy.html?lang=${language}` }, tr("Privacidad"))),
           ],
           el("div", { style: { height: "24px" } }),

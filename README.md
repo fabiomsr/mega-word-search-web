@@ -2,7 +2,7 @@
 
 Landing page, privacy policy and web version of Mega Word Search, served with GitHub Pages.
 
-- `index.html`: landing page, with links to Google Play and to the web version.
+- `index.html`: landing page, with links to Google Play, the App Store and the web version.
 - `privacy.html`: privacy policy (the URL Google Play asks for).
 - Both pages are in Spanish, English and German; `i18n.js` shows the browser's language, or the one given with `?lang=es|en|de`.
 - `carousel.js`: arrows of the screenshot row.
