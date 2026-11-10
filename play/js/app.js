@@ -435,10 +435,13 @@ function homeScreen() {
             button(tr("Opciones"), () => push(optionsScreen())),
           ),
           sticker(SLEEPING, "under-menu"),
-          el("p.subtitle", { style: { marginTop: "24px", fontSize: "16px" } },
-            el("a", { href: APPLE ? APP_STORE : PLAY_STORE, style: { color: "var(--title)" } },
-              APPLE ? tr("Mega Word Search para iPhone y iPad") : tr("Mega Word Search para Android")),
-            " · ",
+          // The app in both stores, the player's own first (on an iPhone or iPad, the App Store).
+          el("p.subtitle", { style: { marginTop: "24px", marginBottom: "6px", fontSize: "16px" } },
+            (APPLE ? [[tr("Mega Word Search para iPhone y iPad"), APP_STORE], [tr("Mega Word Search para Android"), PLAY_STORE]]
+              : [[tr("Mega Word Search para Android"), PLAY_STORE], [tr("Mega Word Search para iPhone y iPad"), APP_STORE]])
+              .flatMap(([label, href], i) => [i ? el("br") : "", el("a", { href, style: { color: "var(--title)" } }, label)]),
+          ),
+          el("p.subtitle", { style: { fontSize: "16px" } },
             el("a", { href: "../", style: { color: "var(--dim)" } }, tr("Volver a la web")),
           ),
         ),
