@@ -504,3 +504,198 @@ button { font: inherit; color: inherit; }
 @keyframes fade-in { from { opacity: 0; } }
 
 canvas.confetti { position: absolute; inset: 0; z-index: 7; pointer-events: none; }
+
+/* ---- Beat the kitten (UI/Screens/Kitten*.cs) ---- */
+
+:root { --progress: #e5f04c; --kitten: #f08a24; --boss: #e5484d; --gold: #f5c542; }
+
+/* Its drawings show in every theme (the cats theme's stickers do not). */
+.kpic { display: inline-block; background-repeat: no-repeat; pointer-events: none; }
+
+.btn.kitten { background: var(--progress); color: #1e2430; }
+.btn.kitten small { color: #4a5160; }
+
+.coins { display: inline-flex; align-items: center; gap: 0.3em; white-space: nowrap; }
+.coin { flex: none; width: 0.84em; height: 0.84em; border-radius: 50%; background: radial-gradient(circle at 36% 36%, rgba(255, 255, 255, 0.7) 0 12%, transparent 13%), var(--gold); box-shadow: inset 0 0 0 0.09em #c88a1e; }
+.coins.gold { color: var(--gold); }
+.topbar .count .coins { font-size: 20px; color: var(--text); }
+.icon svg { display: block; width: 100%; height: 100%; }
+.item { display: inline-flex; align-items: center; gap: 4px; }
+.item .icon { width: 26px; height: 26px; }
+.boss-tag { display: inline-block; background: var(--boss); color: #fff; font-size: 15px; padding: 1px 8px; border-radius: 999px; }
+.boss-warning { color: var(--boss); font-size: 16px; text-align: center; }
+
+/* The lobby: the ring and the badges, then the rival, the shop and Play; in landscape side by side. */
+.kitten-lobby { position: relative; }
+.lobby-body { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.lobby-side { display: flex; flex-direction: column; align-items: center; gap: 14px; width: 100%; }
+.ring { position: relative; width: 162px; height: 162px; display: grid; place-items: center; align-content: center; }
+.ring svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+.ring circle { fill: none; stroke-width: 18; }
+.ring .track { stroke: var(--panel); }
+.ring.empty .fill { display: none; }
+.ring .fill { stroke: var(--progress); stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: 100; transition: stroke-dashoffset 0.8s ease-out; }
+.ring .label { color: var(--dim); font-size: 18px; position: relative; }
+.ring .level { color: var(--title); font-family: var(--display); font-weight: 700; font-size: 50px; line-height: 1; position: relative; }
+.ring .points { color: var(--dim); font-size: 15px; position: relative; }
+.badges { display: grid; grid-template-columns: repeat(4, 52px); gap: 8px; }
+.badge { width: 52px; height: 52px; }
+.badge.missing { display: grid; place-items: center; border-radius: 50%; background: var(--panel); box-shadow: 0 0 0 3px rgba(52, 104, 168, 0.35); color: var(--dim); font-size: 15px; transform: scale(0.88); }
+.rival { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.rival-label { color: var(--dim); }
+.rival-pic { width: 108px; height: 108px; animation: bob 2.5s ease-in-out infinite; }
+.rival-pic.boss { width: 128px; height: 128px; }
+.rival-name { color: var(--title); font-family: var(--display); font-weight: 700; font-size: 30px; line-height: 1.1; }
+.record { color: var(--dim); font-size: 16px; }
+@keyframes bob { 50% { transform: translateY(4px); } }
+.shop-row { display: grid; grid-template-columns: 1fr 1fr; align-items: center; width: 100%; max-width: 320px; }
+.screen .btn.shop { background: #ff6b6b; padding: 10px; font-family: var(--display); font-weight: 700; }
+.bought { display: flex; justify-content: center; gap: 16px; font-size: 20px; }
+.bought .item .icon { width: 30px; height: 30px; }
+.bought .none { color: var(--dim); font-size: 16px; }
+.screen .btn.play { max-width: 320px; background: #4ecdc4; font-family: var(--display); font-weight: 700; font-size: 28px; }
+[data-theme="cats"] .btn.play { animation: hop 2.6s 0.8s infinite; }
+.help-btn { position: absolute; right: 0; top: 76px; width: 44px; height: 44px; font-size: 20px; }
+[data-theme="cats"] .help-btn { top: 92px; }
+@media (orientation: landscape) and (min-width: 700px) {
+  .kitten-lobby { max-width: 900px; }
+  .lobby-body { flex-direction: row; align-items: stretch; justify-content: center; }
+  .lobby-side { width: 50%; justify-content: space-between; }
+  .ring { width: 140px; height: 140px; }
+  .badges { grid-template-columns: repeat(8, 40px); }
+  .badge { width: 40px; height: 40px; }
+}
+
+/* The tutorial over the lobby. */
+.kitten-help { position: fixed; background: rgba(0, 0, 0, 0.7); z-index: 9; }
+.kitten-help .help-box { max-width: 520px; }
+.kitten-help h3 { white-space: nowrap; }
+.help-texts { display: grid; }
+.help-texts p { grid-area: 1 / 1; min-height: 0; }
+.help-texts p.unseen { visibility: hidden; }
+.kitten-help .help-art { height: 132px; display: grid; place-items: center; margin-bottom: 10px; }
+.help-pic { width: 120px; height: 120px; animation: bob 2s ease-in-out infinite; }
+.help-boss { position: relative; display: flex; align-items: center; gap: 8px; }
+.help-boss .help-pic { width: 108px; height: 108px; }
+.help-items { display: flex; flex-direction: column; gap: 8px; }
+.help-items .icon { width: 38px; height: 38px; }
+.help-taps { position: relative; display: flex; gap: 8px; }
+.help-taps .tile { width: 46px; height: 46px; display: grid; place-items: center; border-radius: 8px; background: rgba(52, 104, 168, 0.45); font-size: 26px; }
+.help-taps .tile.tapped { background: var(--progress); color: #000; }
+.help-taps .tile.found { background: var(--done); }
+.help-taps .finger { position: absolute; top: 50px; width: 18px; height: 18px; margin-left: -9px; border-radius: 50%; background: rgba(255, 255, 255, 0.85); transition: left 0.2s; }
+.kitten-help .dots { display: flex; justify-content: center; gap: 10px; margin: 12px 0; }
+.kitten-help .dots span { width: 10px; height: 10px; border-radius: 50%; background: rgba(150, 162, 180, 0.5); }
+.kitten-help .dots .on { background: var(--title); }
+.help-buttons { display: flex; justify-content: center; gap: 16px; }
+.help-buttons .btn { width: 150px; font-size: 18px; padding: 10px; }
+
+/* The shop: shields and boosters, a row each with its price; in landscape a column each. */
+.kitten-shop .subtitle { white-space: nowrap; overflow: hidden; }
+.shop-columns { display: grid; gap: 4px 16px; }
+@media (min-width: 760px) { .shop-columns { grid-template-columns: 1fr 1fr; } }
+.shop-section .section-title { text-align: center; }
+.shop-item { display: grid; grid-template-columns: 48px 1fr 96px; align-items: center; gap: 12px; min-height: 76px; margin-bottom: 8px; padding: 0 12px 0 14px; background: var(--panel); border-radius: 14px; transition: background 0.4s; }
+.shop-item.bought { background: color-mix(in srgb, var(--panel), var(--done) 35%); }
+.shop-item .icon { width: 48px; height: 48px; }
+.shop-item .about { display: flex; flex-direction: column; min-width: 0; }
+.shop-item .name { font-size: 20px; white-space: nowrap; overflow: hidden; }
+.shop-item .sub { color: var(--dim); font-size: 15px; white-space: nowrap; overflow: hidden; }
+.shop-item.bought .sub { color: var(--done); filter: brightness(1.4); }
+.shop-item .price { padding: 10px 4px; font-size: 20px; display: flex; justify-content: center; }
+.shop-item .price:disabled { color: var(--dim); }
+
+/* A board against the kitten: the bar, the rival, the word, the board and the level; in landscape a column on the left. */
+.kduel {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: calc(64px + env(safe-area-inset-top)) 116px 56px 1fr calc(76px + env(safe-area-inset-bottom));
+  grid-template-areas: "bar" "head" "word" "board" "level";
+  padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left);
+}
+.kduel.landscape {
+  grid-template-columns: 300px 1fr;
+  grid-template-rows: calc(64px + env(safe-area-inset-top)) 150px 56px 1fr calc(76px + env(safe-area-inset-bottom));
+  grid-template-areas: "bar board" "head board" "word board" ". board" "level board";
+}
+.kbar { grid-area: bar; display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; gap: 8px; padding: calc(8px + env(safe-area-inset-top)) 8px 8px; }
+.kbar .title { text-align: center; color: var(--dim); font-size: 20px; }
+.kduel.landscape .kbar .title { display: none; }
+.khead { grid-area: head; display: flex; align-items: center; gap: 12px; padding: 0 12px 0 16px; min-width: 0; }
+.duel-pic { flex: none; width: 108px; height: 108px; }
+.kinfo { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.kname { display: flex; align-items: center; gap: 10px; max-width: 100%; }
+.kname .name { color: var(--title); font-family: var(--display); font-weight: 700; font-size: 28px; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.says { max-width: 100%; background: var(--panel); border-radius: 12px; padding: 4px 12px; font-size: 17px; white-space: nowrap; overflow: hidden; }
+.krounds { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; width: 100%; }
+.krounds .dots { display: flex; gap: 8px; padding-left: 2px; }
+.krounds .dot { width: 18px; height: 18px; border-radius: 50%; background: var(--panel); }
+.krounds .dot.player { background: var(--done); }
+.krounds .dot.kitten { background: var(--kitten); }
+.krounds .dot.now { box-shadow: 0 0 0 3px var(--title); animation: ring-pulse 1.25s ease-in-out infinite; }
+@keyframes ring-pulse { 50% { box-shadow: 0 0 0 4px var(--title); } }
+.krounds .items { display: flex; gap: 12px; font-size: 17px; }
+.kword { grid-area: word; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 12px; min-width: 0; }
+.kline { color: var(--dim); font-size: 16px; display: flex; align-items: center; gap: 12px; white-space: nowrap; }
+.kline.player { color: var(--done); filter: brightness(1.35); }
+.kline.kitten { color: var(--kitten); }
+.ktarget { width: 100%; text-align: center; font-family: var(--display); font-weight: 700; font-size: 30px; line-height: 1.35; white-space: nowrap; overflow: hidden; }
+.kboard { grid-area: board; position: relative; min-height: 0; margin: 0 12px 12px; }
+.kduel.landscape .kboard { margin: 0; }
+.kboard canvas.board { position: absolute; inset: 0; display: block; touch-action: none; cursor: pointer; }
+.klevel { grid-area: level; padding: 4px 16px env(safe-area-inset-bottom); }
+.klevel-text { display: flex; justify-content: space-between; align-items: baseline; }
+.klevel-name { color: var(--title); font-size: 20px; }
+.klevel-count { color: var(--dim); font-size: 16px; }
+.kbar-track { position: relative; height: 18px; margin-top: 6px; border-radius: 9px; background: var(--panel); overflow: hidden; }
+.kbar-track .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 9px; background: var(--progress); }
+.kbar-track .mark { position: absolute; top: 4px; bottom: 4px; width: 2px; margin-left: -1px; background: color-mix(in srgb, var(--bg) 50%, transparent); }
+
+/* The cover over the board: the countdown, or the board's summary. */
+.kcover {
+  position: absolute;
+  z-index: 2;
+  background: var(--panel);
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-evenly;
+  padding: 12px 16px;
+  text-align: center;
+  overflow: hidden;
+}
+.kcover.hidden { display: none; }
+.kcover .look-for { color: var(--dim); }
+.kcover .cover-word { width: 100%; color: var(--title); font-family: var(--display); font-weight: 700; font-size: 48px; line-height: 1.3; white-space: nowrap; overflow: hidden; }
+.kcover .cover-category { color: var(--dim); font-size: 16px; }
+.cover-shapes { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 16px; }
+.dirs { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.dir { width: 44px; height: 44px; border-radius: 10px; background: var(--button); display: grid; place-items: center; }
+.dir svg { width: 60%; height: 60%; fill: none; stroke: var(--text); stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; overflow: visible; }
+.dir.new { background: var(--progress); }
+.dir.new svg { stroke: #222a3a; }
+.kcover .number { font-family: var(--display); font-weight: 700; font-size: 96px; line-height: 1; min-height: 1em; }
+.kcover .number.pop { animation: count-pop 0.25s ease-out; }
+@keyframes count-pop { from { transform: scale(1.5); } }
+.summary-title { width: 100%; color: var(--title); font-family: var(--display); font-weight: 700; font-size: 30px; line-height: 1.35; white-space: nowrap; overflow: hidden; }
+.summary-title.lost { color: var(--kitten); }
+.kcover .score { font-size: 20px; }
+.summary-middle { display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 0; }
+.summary-middle .up { color: var(--title); font-size: 20px; }
+.summary-middle .news { color: var(--progress); font-size: 16px; }
+.summary-middle .next { color: var(--dim); font-size: 16px; }
+.summary-pic { width: min(110px, 16vh); height: min(110px, 16vh); animation: bob 2s ease-in-out infinite; }
+.kcover .coins.gold { font-size: 16px; white-space: normal; }
+.summary-buttons { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 300px; }
+.summary-buttons .btn { font-family: var(--display); font-weight: 700; padding: 12px; }
+.kduel .overlay { z-index: 5; }
+@media (prefers-reduced-motion: reduce) {
+  .rival-pic, .help-pic, .summary-pic, [data-theme="cats"] .btn.play { animation: none; }
+}

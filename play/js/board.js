@@ -106,7 +106,9 @@ export class BoardView {
   /**
    * options: { canvas, minimap (canvas or null), grid, kind (BoardKind), letterHeight, cellsAcross, startWidth (the width
    * cellsAcross are fitted into to start: the screen's short side), colors { board [r,g,b], edge, frame, view },
-   * selectionColor [r,g,b], emojiAtlas (Image), emojiColumns, onTap(cell), onChange() }.
+   * selectionColor [r,g,b], emojiAtlas (Image), emojiColumns, onTap(cell), onChange(), fixed (the whole board, as big as
+   * it fits, and it neither moves nor zooms), underLetters(ctx, origin, cell) and overLetters(ctx, origin, cell) (to draw
+   * more under and over the letters) }.
    */
   constructor(options) {
     Object.assign(this, options);
@@ -147,7 +149,11 @@ export class BoardView {
       this.canvas.height = Math.round(ch * dpr);
     }
     this.view = { x, y, w: Math.max(1, w), h: Math.max(1, h) };
-    if (!this.laidOut) {
+    if (this.fixed) {
+      // The board and its edge, as big as they fit.
+      this.zoom = Math.min(this.view.w / (this.grid.width + 2 * EDGE), this.view.h / (this.grid.height + 2 * EDGE));
+      this.position = { x: this.grid.width / 2, y: this.grid.height / 2 };
+    } else if (!this.laidOut) {
       this.laidOut = true;
       this.reset();
     } else {
@@ -206,12 +212,14 @@ export class BoardView {
   }
 
   pan(dx, dy) {
+    if (this.fixed) return;
     this.glide = null;
     this.position = this.clampPosition({ x: this.position.x - dx / this.zoom, y: this.position.y - dy / this.zoom });
     this.dirty = true;
   }
 
   zoomAt(sx, sy, factor) {
+    if (this.fixed) return;
     this.glide = null;
     const focus = this.toWorld(sx, sy);
     this.zoom = clamp(this.zoom * factor, this.minZoom, this.maxZoom);
@@ -347,6 +355,7 @@ export class BoardView {
       return;
     }
     // Inertia from the last 80 ms of movement.
+    if (this.fixed) return;
     const now = performance.now();
     const recent = this.samples.filter((s) => now - s.t < 80);
     if (recent.length > 1) {
@@ -418,6 +427,7 @@ export class BoardView {
       ctx.arc(origin.x + (cell.col + 0.5) * z, origin.y + (cell.row + 0.5) * z, (width / 2) * z, 0, Math.PI * 2);
       ctx.fill();
     }
+    this.underLetters?.(ctx, origin, z);
 
     if (opacity > 0) {
       const first = this.toWorld(this.view.x, this.view.y), last = this.toWorld(this.view.x + this.view.w, this.view.y + this.view.h);
@@ -449,6 +459,7 @@ export class BoardView {
         }
       }
     }
+    this.overLetters?.(ctx, origin, z);
     this.drawMinimap(marks);
   }
 

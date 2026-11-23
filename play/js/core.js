@@ -12,14 +12,15 @@ export class DotNetRandom {
     seed |= 0;
     const seedArray = new Array(56).fill(0);
     const subtraction = seed === -2147483648 ? MBIG : Math.abs(seed);
-    let mj = MSEED - subtraction;
+    // Int32 arithmetic, wrapping as C#'s does (a seed over MSEED makes mj negative).
+    let mj = (MSEED - subtraction) | 0;
     seedArray[55] = mj;
     let mk = 1;
     let ii = 0;
     for (let i = 1; i < 55; i++) {
       if ((ii += 21) >= 55) ii -= 55;
       seedArray[ii] = mk;
-      mk = mj - mk;
+      mk = (mj - mk) | 0;
       if (mk < 0) mk += MBIG;
       mj = seedArray[ii];
     }
@@ -27,7 +28,7 @@ export class DotNetRandom {
       for (let i = 1; i < 56; i++) {
         let n = i + 30;
         if (n >= 55) n -= 55;
-        seedArray[i] -= seedArray[1 + n];
+        seedArray[i] = (seedArray[i] - seedArray[1 + n]) | 0;
         if (seedArray[i] < 0) seedArray[i] += MBIG;
       }
     }
@@ -53,8 +54,9 @@ export class DotNetRandom {
     return this.internalSample() * (1.0 / MBIG);
   }
 
-  /** Next(max) with one argument, Next(min, max) with two: max excluded. */
+  /** Next() with no argument (0 to int.MaxValue, excluded), Next(max) with one, Next(min, max) with two: max excluded. */
   next(a, b) {
+    if (a === undefined) return this.internalSample();
     if (b === undefined) return Math.trunc(this.sample() * a);
     return Math.trunc(this.sample() * (b - a)) + a;
   }
@@ -835,5 +837,634 @@ export class PuzzleState {
   add(placed) {
     this.found.push(placed);
     this.foundWords.add(placed.word);
+  }
+}
+
+// ---- «Beat the kitten» (see KittenLevels, KittenSearch, KittenMatch, KittenProgress, KittenShop, KittenBadges) ----
+
+/** How a kitten goes over the board looking for a word (KittenStrategy). */
+export const KittenStrategy = { Rows: 0, Columns: 1, Jumps: 2, Spiral: 3, RareLetter: 4 };
+
+export const KITTEN_WORDS = 5;
+export const KITTEN_POINTS_PER_WORD = 20;
+export const KITTEN_POINTS_PER_LEVEL = KITTEN_POINTS_PER_WORD * KITTEN_WORDS;
+const KITTEN_RECENT_WORDS = 200;
+const KITTEN_RECENT_CATEGORIES = 3;
+/** A board won is worth this many times the coins its words gave (KittenCoins); each word, one coin. */
+export const KITTEN_BOARD_WON_FACTOR = 2;
+export const kittenCoinsPerWord = () => 1;
+
+/** The drawings beyond the cats theme's stickers (0-29), each atlas with its range of numbers (KittenPictures). */
+export const KITTEN_SHEETS = [
+  { first: 100, name: "angry", columns: 6, count: 36 },
+  { first: 200, name: "costumes", columns: 6, count: 30 },
+  { first: 300, name: "space", columns: 6, count: 30 },
+  { first: 400, name: "bosses", columns: 4, count: 12 },
+  { first: 500, name: "badges", columns: 4, count: 8 },
+];
+const ANGRY = 100, COSTUMES = 200, SPACE = 300, BOSSES = 400, BADGES = 500;
+
+const LEVELS_PER_SIZE = 20;
+const FIRST_SIZE = 8;
+const MAX_SIZE = 11;
+const KITTEN_MIN_LETTERS = 4;
+const KITTEN_SEED_ATTEMPTS = 20;
+const ORDER_SALT = 0x6a77;
+const FRESH_TRIES = 60;
+const LAST_LEVEL = 30;
+export const KITTEN_BOARD_LEVELS = 101;
+export const KITTEN_MAX_LEVEL = 120;
+export const KITTEN_BOSS_EVERY = 10;
+const STRETCH = 27;
+
+const S = Shape;
+// The shapes by level, as the last level of each.
+const SHAPES_BY_LEVEL = [
+  [10, S.Horizontal | S.Vertical],
+  [20, S.Horizontal | S.Vertical | S.DiagonalDown],
+  [30, S.Straight | S.Diagonals],
+  [40, S.Straight | S.Diagonals | S.HorizontalReverse],
+  [50, S.Straight | S.Diagonals | S.HorizontalReverse | S.VerticalReverse],
+  [60, S.Straight | S.Diagonals | S.HorizontalReverse | S.VerticalReverse | S.DiagonalDownReverse],
+  [KITTEN_BOARD_LEVELS, S.AllStraight],
+];
+
+const rival = (sticker, name, boss = false) => ({ sticker, name, boss });
+const plain = (pairs) => pairs.map(([sticker, name]) => rival(sticker, name));
+const sheet = (first, pairs) => pairs.map(([drawing, name]) => rival(first + drawing, name));
+
+/** The kittens of the levels between bosses: 27 for each stretch of 30 levels. */
+export const KITTENS = [
+  ...plain([[3, "Mimi"], [1, "Sushi"], [13, "Nube"], [4, "Coco"], [14, "Bolita"], [8, "Kiwi"], [12, "Flor"], [15, "Pipo"],
+    [10, "Canela"], [16, "Yoyo"], [17, "Brote"], [5, "Bruno"], [18, "Lola"], [19, "Gabi"], [21, "Chispa"], [25, "Oliva"],
+    [26, "Mochi"], [7, "Suki"], [24, "Noel"], [27, "Oreo"], [28, "Toby"], [22, "Bongo"], [11, "Tofu"], [9, "Einstein"],
+    [20, "Rocky"], [29, "Merlín"], [2, "Leo"]]),
+  ...sheet(ANGRY, [[0, "Bigotes"], [1, "Zarpa"], [3, "Perla"], [4, "Moca"], [5, "Capucha"], [7, "Siam"], [8, "Pecas"], [9, "Profe"],
+    [10, "Tigre"], [12, "Violeta"], [13, "Tizón"], [15, "Rapero"], [17, "Musgo"], [18, "Pirata"], [20, "Puchero"], [21, "Escarcha"],
+    [22, "Remix"], [24, "Copito"], [26, "Algodón"], [28, "Turbo"], [29, "Hechizo"], [30, "Corazón"], [31, "Ceniza"], [32, "Brisa"],
+    [33, "Llama"], [34, "Duquesa"], [35, "Ninja"]]),
+  ...sheet(COSTUMES, [[0, "Punk"], [1, "Bandana"], [2, "Hueso"], [3, "Rosita"], [4, "Barón"], [5, "Tiburón"], [6, "Gamer"], [7, "Monje"],
+    [8, "Galán"], [9, "Sabio"], [10, "Majestad"], [11, "Estrella"], [12, "Celeste"], [13, "Capa"], [14, "Merengue"], [15, "Skater"],
+    [16, "Shinobi"], [17, "Hiedra"], [18, "Cascabel"], [19, "Querubín"], [20, "Picante"], [21, "Cyborg"], [22, "Voltio"],
+    [23, "Bombón"], [25, "Explorador"], [27, "Volcán"], [29, "Hechicero"]]),
+  ...sheet(SPACE, [[0, "Astro"], [1, "Marciano"], [2, "Vórtice"], [3, "Visor"], [4, "Trióculo"], [5, "Ovni"], [6, "Capitán"], [7, "Cíclope"],
+    [8, "Lila"], [9, "Antenita"], [10, "Corsario"], [11, "Estela"], [12, "Glaciar"], [13, "Amatista"], [14, "Jade"], [15, "Platillo"],
+    [16, "Magma"], [17, "Mecha"], [18, "Cobre"], [20, "Umbra"], [21, "Plasma"], [22, "Órbita"], [23, "Kraken"], [25, "Gamma"],
+    [26, "Sputnik"], [27, "Eclipse"], [29, "Saturno"]]),
+];
+
+/** The bosses of levels 10, 20… 120. */
+export const KITTEN_BOSSES = [[2, "Sakura"], [3, "Druida"], [0, "Escarlata"], [1, "Abismo"], [4, "Brasa"], [5, "Lavanda"],
+  [10, "Shuriken"], [8, "Glacius"], [7, "Mago Sombra"], [6, "Emperador"], [11, "Noctis"], [9, "Draco"]]
+  .map(([drawing, name]) => rival(BOSSES + drawing, name, true));
+
+const boardLevel = (level) => clamp(level, 1, KITTEN_BOARD_LEVELS);
+
+export const kittenSize = (level) => Math.min(MAX_SIZE, FIRST_SIZE + Math.floor((boardLevel(level) - 1) / LEVELS_PER_SIZE));
+
+export const kittenShapes = (level) => SHAPES_BY_LEVEL.find(([last]) => boardLevel(level) <= last)[1];
+
+/** The shapes a level adds to the one before. */
+export const kittenNewShapes = (level) => (level <= 1 ? Shape.None : kittenShapes(level) & ~kittenShapes(level - 1));
+
+export const isKittenBoss = (level) => level >= KITTEN_BOSS_EVERY && level % KITTEN_BOSS_EVERY === 0;
+
+/** The kitten of a level: a new one each level up to the 120th, a boss every ten; then the last stretch's and the bosses take turns. */
+export function kittenRival(level) {
+  level = Math.max(1, level);
+  if (isKittenBoss(level)) return KITTEN_BOSSES[(level / KITTEN_BOSS_EVERY - 1) % KITTEN_BOSSES.length];
+  let index = level - 1 - Math.floor(level / KITTEN_BOSS_EVERY);
+  if (index >= KITTENS.length) index = KITTENS.length - STRETCH + ((index - KITTENS.length) % STRETCH);
+  return KITTENS[index];
+}
+
+/** The points a word lost takes: a word's, or more against a boss. */
+export function kittenPenalty(level) {
+  if (!isKittenBoss(level)) return KITTEN_POINTS_PER_WORD;
+  return level <= 30 ? 40 : level <= 90 ? 60 : 80;
+}
+
+// Seconds per look by level (KittenLevels.LookSeconds).
+const LOOK_SECONDS = [
+  0.333, 0.323, 0.311, 0.298, 0.284, 0.242, 0.242, 0.239, 0.236, 0.239,
+  0.232, 0.228, 0.225, 0.221, 0.222, 0.222, 0.223, 0.224, 0.225, 0.226,
+  0.204, 0.205, 0.205, 0.206, 0.207, 0.207, 0.208, 0.208, 0.209, 0.21,
+  ...new Array(10).fill(0.247), ...new Array(10).fill(0.223), ...new Array(10).fill(0.222),
+  ...new Array(30).fill(0.188), ...new Array(11).fill(0.186),
+].map(Math.fround);
+const FIRST_SELECT = Math.fround(0.32), LAST_SELECT = Math.fround(0.18);
+const MISSES = [[1, 0.25], [5, 0.2], [14, 0.12]];
+
+export function kittenMissChance(level) {
+  level = Math.max(1, level);
+  const last = MISSES[MISSES.length - 1];
+  if (level > last[0]) return level <= 30 ? 0.12 : level <= 40 ? 0.1 : level <= 60 ? 0.09 : level <= 90 ? 0.08 : 0.07;
+  for (let i = 1; i < MISSES.length; i++) {
+    if (level > MISSES[i][0]) continue;
+    const [from, fromMiss] = MISSES[i - 1], [to, toMiss] = MISSES[i];
+    return fromMiss + ((toMiss - fromMiss) * (level - from)) / (to - from);
+  }
+  return last[1];
+}
+
+/** How the kitten plays at a level: { lookSeconds, missChance, strategies, selectSeconds }. */
+export function kittenDifficulty(level) {
+  const lookSeconds = LOOK_SECONDS[boardLevel(level) - 1];
+  const missChance = kittenMissChance(level);
+  level = clamp(level, 1, LAST_LEVEL);
+  const part = Math.fround((level - 1) / (LAST_LEVEL - 1));
+  const strategies = [KittenStrategy.Rows, KittenStrategy.Columns, KittenStrategy.Jumps];
+  if (level >= 6) strategies.push(KittenStrategy.Spiral);
+  if (level >= 10) strategies.push(KittenStrategy.RareLetter);
+  const selectSeconds = Math.fround(FIRST_SELECT + Math.fround((LAST_SELECT - FIRST_SELECT) * part));
+  return { lookSeconds, missChance, strategies, selectSeconds };
+}
+
+/** The spec of a board of a level: its size and shapes, and one category chosen with the seed. */
+export function kittenSpec(level, seed, bank) {
+  const random = new DotNetRandom(seed);
+  const category = bank.categories[random.next(bank.categories.length)];
+  const size = kittenSize(level);
+  return {
+    width: size, height: size, wordCount: KITTEN_WORDS, categories: [category.id], shapes: kittenShapes(level),
+    alphabet: LETTERS, minLetters: KITTEN_MIN_LETTERS, maxLetters: size,
+  };
+}
+
+/** The board of a level and seed: the first of the seeds from it on that places every word. */
+export function kittenBoard(level, seed, bank) {
+  let puzzle = null;
+  for (let attempt = 0; attempt < KITTEN_SEED_ATTEMPTS; attempt++) {
+    puzzle = generate(kittenSpec(level, seed, bank), bank, (seed + attempt) | 0);
+    if (puzzle.words.length === puzzle.spec.wordCount) return puzzle;
+  }
+  return puzzle;
+}
+
+/**
+ * A seed for a new board of a level whose words are none of the recent ones and whose category is none of the recent
+ * ones: the first of some seeds from nextSeed() that does, or the one closest to it.
+ */
+export function kittenFreshSeed(level, nextSeed, bank, recentWords, recentCategories) {
+  const words = new Set(recentWords);
+  let best = 0, bestScore = Infinity;
+  for (let i = 0; i < FRESH_TRIES && bestScore > 0; i++) {
+    const seed = nextSeed();
+    const puzzle = kittenBoard(level, seed, bank);
+    const repeated = puzzle.words.filter((placed) => words.has(placed.word.letters)).length;
+    const oldCategory = puzzle.words.length > 0 && recentCategories.includes(puzzle.words[0].word.category);
+    const score = repeated * 2 + (oldCategory ? 1 : 0);
+    if (score < bestScore) {
+      best = seed;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+/**
+ * LINQ's OrderBy (then ThenBy) on keys: each key function called for every item in order, then a stable sort. With one
+ * item or none .NET calls no key function.
+ */
+function orderBy(items, ...keyFunctions) {
+  if (items.length <= 1) return items.slice();
+  const keys = keyFunctions.map((keyOf) => items.map((item) => keyOf(item)));
+  return items.map((_, i) => i).sort((a, b) => {
+    for (const k of keys) if (k[a] !== k[b]) return k[a] < k[b] ? -1 : 1;
+    return a - b;
+  }).map((i) => items[i]);
+}
+
+/** The order the words of a board are asked for, chosen with its seed. */
+export function kittenOrder(puzzle) {
+  const random = new DotNetRandom(puzzle.seed ^ ORDER_SALT);
+  return orderBy(puzzle.words, () => random.next());
+}
+
+// ---- The kitten looking for a word, one cell at a time (KittenSearch) ----
+
+const CHECK_FACTOR = Math.fround(0.8);
+const JITTER = Math.fround(0.3);
+export const KITTEN_TRAIL = 6;
+const MAX_PASSES = 40;
+const sameStep = (a, b) => !!a && !!b && a[0] === b[0] && a[1] === b[1];
+
+export class KittenSearch {
+  constructor(grid, word, shapes, strategy, difficulty, random) {
+    this.grid = grid;
+    this.word = word;
+    this.difficulty = difficulty;
+    this.random = random;
+    this.strategy = strategy;
+    this.steps = STEPS.filter(([shape]) => shapes & shape).map(([, row, col]) => [row, col]);
+    this.trail = [];
+    this.matchedByIndex = new Map();
+    this.selected = [];
+    /** The look now: { cell, checking, selecting }, or null once done. */
+    this.look = null;
+    this.found = null;
+    this.looks = 0;
+    this.elapsed = 0;
+    this.lookTime = 0;
+    this.iterator = this.run();
+    this.next();
+  }
+
+  get isDone() { return this.look === null; }
+  get isSelecting() { return !!this.look && this.look.selecting; }
+  /** While checking a direction, the cells that fit so far, in the word's order. */
+  get matched() { return [...this.matchedByIndex.entries()].sort((a, b) => a[0] - b[0]).map(([, cell]) => cell); }
+  /** How far into the look now, from 0 to 1. */
+  get lookProgress() { return this.look === null ? 1 : clamp(this.elapsed / this.lookTime, 0, 1); }
+
+  advance(seconds) {
+    this.elapsed += seconds;
+    while (this.look !== null && this.elapsed >= this.lookTime) {
+      this.elapsed -= this.lookTime;
+      this.next();
+    }
+  }
+
+  next() {
+    const previous = this.look;
+    if (previous) {
+      if (previous.selecting) this.selected.push(previous.cell);
+      else {
+        this.trail.push(previous.cell);
+        if (this.trail.length > KITTEN_TRAIL) this.trail.shift();
+      }
+    }
+    const step = this.iterator.next();
+    if (step.done) {
+      this.look = null;
+      return;
+    }
+    this.look = step.value;
+    this.looks++;
+    if (this.look.selecting) {
+      this.lookTime = this.difficulty.selectSeconds;
+      return;
+    }
+    const jitter = Math.fround(1 + JITTER * Math.fround(this.random.nextDouble() * 2 - 1));
+    this.lookTime = Math.fround(this.difficulty.lookSeconds * jitter * (this.look.checking ? CHECK_FACTOR : 1));
+  }
+
+  *run() {
+    const grid = this.grid, letters = this.word.letters, random = this.random;
+    const anchor = this.strategy === KittenStrategy.RareLetter ? this.rarestLetter(letters) : 0;
+    for (let pass = 0; pass < MAX_PASSES; pass++) {
+      const order = pass === 0 ? this.strategy : KittenStrategy.Jumps;
+      let previous = null;
+      for (const cell of this.order(order)) {
+        yield { cell, checking: false, selecting: false };
+        const line = scanLine(order, previous, cell);
+        previous = cell;
+        if (grid.get(cell) !== letters[anchor]) continue;
+        // The word along the line the kitten goes over: it reads it, so it does not overlook it.
+        let read = null;
+        if (line) {
+          read = [line, [-line[0], -line[1]]].find((step) => this.steps.some((s) => sameStep(s, step)) && this.spells(cell, step, anchor, letters)) ?? null;
+        }
+        if (read === null && random.nextDouble() < this.difficulty.missChance) continue;
+        const fitting = this.steps.filter((step) => this.fits(cell, step, anchor, letters.length));
+        for (const step of orderBy(fitting, (step) => (sameStep(step, read) ? 0 : 1), () => random.next())) {
+          this.matchedByIndex.clear();
+          this.matchedByIndex.set(anchor, cell);
+          let fits = true;
+          for (const index of checkOrder(anchor, letters.length)) {
+            const next = at(cell, step, index - anchor);
+            yield { cell: next, checking: true, selecting: false };
+            if (grid.get(next) !== letters[index]) {
+              fits = false;
+              break;
+            }
+            this.matchedByIndex.set(index, next);
+          }
+          if (fits) {
+            const spotted = { word: this.word, cells: [...letters].map((_, index) => at(cell, step, index - anchor)) };
+            this.matchedByIndex.clear();
+            this.trail.length = 0;
+            for (const letter of spotted.cells) yield { cell: letter, checking: false, selecting: true };
+            this.found = spotted;
+            return;
+          }
+        }
+        this.matchedByIndex.clear();
+      }
+    }
+  }
+
+  spells(cell, step, anchor, letters) {
+    if (!this.fits(cell, step, anchor, letters.length)) return false;
+    for (let index = 0; index < letters.length; index++) if (this.grid.get(at(cell, step, index - anchor)) !== letters[index]) return false;
+    return true;
+  }
+
+  fits(cell, step, anchor, length) {
+    return this.grid.contains(at(cell, step, -anchor)) && this.grid.contains(at(cell, step, length - 1 - anchor));
+  }
+
+  /** The word's letter least often on the board (the first of them on a tie). */
+  rarestLetter(letters) {
+    const counts = new Map();
+    for (const letter of this.grid.letters) counts.set(letter, (counts.get(letter) || 0) + 1);
+    let best = 0;
+    for (let i = 1; i < letters.length; i++) if ((counts.get(letters[i]) || 0) < (counts.get(letters[best]) || 0)) best = i;
+    return best;
+  }
+
+  *order(strategy) {
+    const width = this.grid.width, height = this.grid.height;
+    if (strategy === KittenStrategy.Columns) {
+      for (let col = 0; col < width; col++) for (let row = 0; row < height; row++) yield { row, col };
+    } else if (strategy === KittenStrategy.Jumps) {
+      const cells = [];
+      for (let row = 0; row < height; row++) for (let col = 0; col < width; col++) cells.push({ row, col });
+      for (let i = cells.length - 1; i > 0; i--) {
+        const j = this.random.next(i + 1);
+        [cells[i], cells[j]] = [cells[j], cells[i]];
+      }
+      yield* cells;
+    } else if (strategy === KittenStrategy.Spiral) {
+      yield* kittenSpiral(width, height);
+    } else {
+      for (let row = 0; row < height; row++) for (let col = 0; col < width; col++) yield { row, col };
+    }
+  }
+}
+
+const at = (cell, step, times) => ({ row: cell.row + step[0] * times, col: cell.col + step[1] * times });
+
+function* checkOrder(anchor, length) {
+  for (let index = anchor + 1; index < length; index++) yield index;
+  for (let index = anchor - 1; index >= 0; index--) yield index;
+}
+
+/** The direction the kitten goes over the board in at a cell: along the rows or the columns, or the spiral's. */
+function scanLine(order, previous, cell) {
+  switch (order) {
+    case KittenStrategy.Rows:
+    case KittenStrategy.RareLetter:
+      return [0, 1];
+    case KittenStrategy.Columns:
+      return [1, 0];
+    case KittenStrategy.Spiral: {
+      if (!previous) return null;
+      const row = cell.row - previous.row, col = cell.col - previous.col;
+      return Math.abs(row) + Math.abs(col) === 1 ? [row, col] : null;
+    }
+    default:
+      return null;
+  }
+}
+
+/** From the middle outwards: right 1, down 1, left 2, up 2, right 3… leaving out the cells off the board. */
+export function* kittenSpiral(width, height) {
+  let cell = { row: Math.floor((height - 1) / 2), col: Math.floor((width - 1) / 2) };
+  let left = width * height;
+  const turns = [[0, 1], [1, 0], [0, -1], [-1, 0]];
+  yield cell;
+  left--;
+  for (let run = 1, turn = 0; left > 0; turn++) {
+    const step = turns[turn % 4];
+    for (let i = 0; i < run && left > 0; i++) {
+      cell = { row: cell.row + step[0], col: cell.col + step[1] };
+      if (cell.row < 0 || cell.row >= height || cell.col < 0 || cell.col >= width) continue;
+      yield cell;
+      left--;
+    }
+    if (turn % 2 === 1) run++;
+  }
+}
+
+// ---- The player's progress (KittenProgress), as localStorage keeps it ----
+
+export function newKittenProgress() {
+  return {
+    points: 0, wins: 0, losses: 0, coins: 0, shields: 0, boosterMultiplier: 1, boosterWins: 0,
+    board: null, recentWords: [], recentCategories: [],
+  };
+}
+
+/** A progress read back, with anything missing or wrong put right. */
+export function readKittenProgress(data) {
+  const p = newKittenProgress();
+  if (!data || typeof data !== "object") return p;
+  const count = (value) => (Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0);
+  p.points = count(data.points);
+  p.wins = count(data.wins);
+  p.losses = count(data.losses);
+  p.coins = count(data.coins);
+  p.shields = count(data.shields);
+  p.boosterWins = data.boosterMultiplier > 1 ? count(data.boosterWins) : 0;
+  p.boosterMultiplier = p.boosterWins > 0 ? Math.floor(data.boosterMultiplier) : 1;
+  const board = data.board;
+  if (board && Number.isInteger(board.seed) && Number.isInteger(board.level) && board.level >= 1 && Array.isArray(board.results)) {
+    p.board = { seed: board.seed, level: board.level, results: board.results.map(Boolean).slice(0, KITTEN_WORDS) };
+  }
+  if (Array.isArray(data.recentWords)) p.recentWords = data.recentWords.filter((w) => typeof w === "string").slice(-KITTEN_RECENT_WORDS);
+  if (Array.isArray(data.recentCategories)) p.recentCategories = data.recentCategories.filter((c) => typeof c === "string").slice(-KITTEN_RECENT_CATEGORIES);
+  return p;
+}
+
+export const kittenLevelOf = (points) => Math.floor(points / KITTEN_POINTS_PER_LEVEL) + 1;
+export const kittenLevel = (progress) => kittenLevelOf(progress.points);
+export const kittenLevelPoints = (progress) => progress.points % KITTEN_POINTS_PER_LEVEL;
+export const hasBooster = (progress) => progress.boosterWins > 0;
+
+/** A new board's words and category, for the next boards to keep clear of them. */
+export function rememberKittenWords(progress, words) {
+  for (const word of words) {
+    const at = progress.recentWords.indexOf(word.letters);
+    if (at >= 0) progress.recentWords.splice(at, 1);
+    progress.recentWords.push(word.letters);
+  }
+  const category = words.length > 0 ? words[0].category : null;
+  if (category !== null) {
+    const at = progress.recentCategories.indexOf(category);
+    if (at >= 0) progress.recentCategories.splice(at, 1);
+    progress.recentCategories.push(category);
+  }
+  if (progress.recentWords.length > KITTEN_RECENT_WORDS) progress.recentWords.splice(0, progress.recentWords.length - KITTEN_RECENT_WORDS);
+  if (progress.recentCategories.length > KITTEN_RECENT_CATEGORIES) progress.recentCategories.splice(0, progress.recentCategories.length - KITTEN_RECENT_CATEGORIES);
+}
+
+/** A round won: its points (multiplied by the booster), and true if they open the next level. */
+export function kittenWin(progress) {
+  const level = kittenLevel(progress);
+  const booster = hasBooster(progress);
+  progress.points += KITTEN_POINTS_PER_WORD * (booster ? progress.boosterMultiplier : 1);
+  if (booster && --progress.boosterWins === 0) progress.boosterMultiplier = 1;
+  progress.wins++;
+  return kittenLevel(progress) > level;
+}
+
+/** A round lost: the points go, down to the start of the level at most; or a shield's charge. Whether a shield saved them. */
+export function kittenLose(progress, points = KITTEN_POINTS_PER_WORD) {
+  progress.losses++;
+  if (progress.shields > 0) {
+    progress.shields--;
+    return true;
+  }
+  progress.points = Math.max((kittenLevel(progress) - 1) * KITTEN_POINTS_PER_LEVEL, progress.points - points);
+  return false;
+}
+
+// ---- The shop (KittenShop) and the badges (KittenBadges) ----
+
+export const KITTEN_ITEMS = [
+  { name: "Escudo de madera", kind: "shield", price: 45, amount: 3, multiplier: 1 },
+  { name: "Escudo de hierro", kind: "shield", price: 85, amount: 6, multiplier: 1 },
+  { name: "Escudo de oro", kind: "shield", price: 150, amount: 12, multiplier: 1 },
+  { name: "Potenciador ×2", kind: "booster", price: 70, amount: 5, multiplier: 2 },
+  { name: "Potenciador ×3", kind: "booster", price: 120, amount: 5, multiplier: 3 },
+  { name: "Gran potenciador ×2", kind: "booster", price: 180, amount: 15, multiplier: 2 },
+];
+
+export const canBuyKittenItem = (progress, item) =>
+  progress.coins >= item.price && (item.kind === "shield" || !hasBooster(progress) || progress.boosterMultiplier === item.multiplier);
+
+export const waitsForBooster = (progress, item) =>
+  item.kind === "booster" && hasBooster(progress) && progress.boosterMultiplier !== item.multiplier;
+
+export function buyKittenItem(progress, item) {
+  if (!canBuyKittenItem(progress, item)) return false;
+  progress.coins -= item.price;
+  if (item.kind === "shield") progress.shields += item.amount;
+  else {
+    if (!hasBooster(progress)) progress.boosterMultiplier = item.multiplier;
+    progress.boosterWins += item.amount;
+  }
+  return true;
+}
+
+export const KITTEN_BADGE_EVERY = 15;
+export const KITTEN_BADGES = 8;
+export const kittenBadgeLevel = (index) => (index + 1) * KITTEN_BADGE_EVERY;
+export const kittenBadgeSticker = (index) => BADGES + index;
+/** The badge reaching a level gives, or -1. */
+export const kittenBadgeEarnedAt = (level) =>
+  level % KITTEN_BADGE_EVERY === 0 && level / KITTEN_BADGE_EVERY <= KITTEN_BADGES ? level / KITTEN_BADGE_EVERY - 1 : -1;
+
+// ---- A board played against a kitten (KittenMatch) ----
+
+export const KittenPhase = { Countdown: "countdown", Playing: "playing", RoundOver: "roundOver", BoardOver: "boardOver" };
+export const KITTEN_COUNTDOWN = 3;
+export const KITTEN_SHAPES_TIME = 2;
+const ROUND_OVER_TIME = Math.fround(2.2);
+const KITTEN_SALT = 0x3c47;
+
+export class KittenMatch {
+  /** The board halfway in the progress, or a new one of the player's level that keeps clear of the last boards' words. */
+  static start(progress, bank, nextSeed) {
+    if (progress.board) return new KittenMatch(progress, kittenBoard(progress.board.level, progress.board.seed, bank));
+    const level = kittenLevel(progress);
+    const seed = kittenFreshSeed(level, nextSeed, bank, progress.recentWords, progress.recentCategories);
+    progress.board = { seed, level, results: [] };
+    const puzzle = kittenBoard(level, seed, bank);
+    rememberKittenWords(progress, puzzle.words.map((placed) => placed.word));
+    return new KittenMatch(progress, puzzle);
+  }
+
+  constructor(progress, puzzle) {
+    this.progress = progress;
+    this.puzzle = puzzle;
+    this.board = progress.board;
+    this.level = this.board.level;
+    this.rival = kittenRival(this.level);
+    this.difficulty = kittenDifficulty(this.level);
+    this.order = kittenOrder(puzzle);
+    /** The rounds played: { placed, playerWon }. */
+    this.rounds = [];
+    for (let i = 0; i < this.board.results.length && i < this.order.length; i++) this.rounds.push({ placed: this.order[i], playerWon: this.board.results[i] });
+    this.round = this.rounds.length;
+    this.showsShapes = true;
+    this.leveledUp = false;
+    this.roundShielded = false;
+    this.roundCoins = 0;
+    this.boardBonus = 0;
+    this.onRoundEnded = null;
+    this.startRound();
+  }
+
+  get shapes() { return this.puzzle.spec.shapes; }
+  get target() { return this.order[Math.min(this.round, this.order.length - 1)]; }
+  get playerWins() { return this.rounds.filter((r) => r.playerWon).length; }
+  get kittenWins() { return this.rounds.filter((r) => !r.playerWon).length; }
+  get boardCoins() { return this.playerWins * kittenCoinsPerWord(this.level); }
+  get boardWon() { return this.playerWins > this.kittenWins || this.leveledUp; }
+  get countdownLength() { return KITTEN_COUNTDOWN + (this.showsShapes ? KITTEN_SHAPES_TIME : 0); }
+
+  /** The number of the countdown to show (3, 2, 1), or 0 before it starts (the shapes) and after. */
+  get countdownNumber() {
+    if (this.phase !== KittenPhase.Countdown) return 0;
+    const left = this.countdownLength - this.phaseTime;
+    return left > KITTEN_COUNTDOWN ? 0 : Math.max(1, Math.ceil(left));
+  }
+
+  startRound() {
+    this.phase = KittenPhase.Countdown;
+    this.phaseTime = 0;
+    const random = new DotNetRandom(this.board.seed ^ KITTEN_SALT ^ Math.imul(this.round, 7919));
+    const strategy = this.difficulty.strategies[random.next(this.difficulty.strategies.length)];
+    this.kitten = new KittenSearch(this.puzzle.grid, this.target.word, this.shapes, strategy, this.difficulty, random);
+  }
+
+  update(seconds) {
+    this.phaseTime += seconds;
+    switch (this.phase) {
+      case KittenPhase.Countdown:
+        if (this.phaseTime < this.countdownLength) return;
+        seconds = this.phaseTime - this.countdownLength;
+        this.phase = KittenPhase.Playing;
+        this.phaseTime = seconds;
+        this.kitten.advance(seconds);
+        break;
+      case KittenPhase.Playing:
+        this.kitten.advance(seconds);
+        break;
+      case KittenPhase.RoundOver:
+        if (this.phaseTime < ROUND_OVER_TIME) return;
+        if (this.rounds.length >= this.order.length || this.leveledUp) {
+          this.phase = KittenPhase.BoardOver;
+          this.phaseTime = 0;
+          return;
+        }
+        this.round = this.rounds.length;
+        this.showsShapes = false;
+        this.startRound();
+        return;
+      default:
+        return;
+    }
+    if (this.kitten.found) this.endRound({ placed: this.kitten.found, playerWon: false });
+  }
+
+  /** The letters the player has selected: the round's word if some of them spell it (any other does not count). */
+  tryPlayer(cells) {
+    if (this.phase !== KittenPhase.Playing) return null;
+    const placed = matchSelection(this.puzzle.grid, cells, [this.target.word], this.shapes);
+    if (placed) this.endRound({ placed, playerWon: true });
+    return placed;
+  }
+
+  endRound(round) {
+    const progress = this.progress;
+    this.rounds.push(round);
+    this.roundShielded = false;
+    if (round.playerWon) this.leveledUp = kittenWin(progress) || this.leveledUp;
+    else this.roundShielded = kittenLose(progress, kittenPenalty(this.level));
+    this.roundCoins = round.playerWon ? kittenCoinsPerWord(this.level) : 0;
+    progress.coins += this.roundCoins;
+    this.board = { ...this.board, results: [...this.board.results, round.playerWon] };
+    // A level up ends the board: the next one is of the new level.
+    progress.board = this.rounds.length < this.order.length && !this.leveledUp ? this.board : null;
+    if (progress.board === null && this.boardWon) {
+      this.boardBonus = this.boardCoins * (KITTEN_BOARD_WON_FACTOR - 1);
+      progress.coins += this.boardBonus;
+    }
+    this.phase = KittenPhase.RoundOver;
+    this.phaseTime = 0;
+    this.onRoundEnded?.(round);
   }
 }

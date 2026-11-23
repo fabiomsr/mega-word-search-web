@@ -10,12 +10,12 @@ Landing page, privacy policy and web version of Mega Word Search, served with Gi
 
 ## The game in the browser (`play/`)
 
-The game remade in plain JavaScript (no build step): challenges, custom games, Wordittos and options, with the progress and the game in progress kept in the browser (`localStorage`).
+The game remade in plain JavaScript (no build step): challenges, «Beat the kitten» (its levels, rivals, bosses, shop and badges), custom games, Wordittos and options, with the progress and the game in progress kept in the browser (`localStorage`).
 
-- `play/js/core.js`: the model and the generator, ported from the game's `MegaWordSearch.Core` (with .NET's `System.Random`), so the same options and seed give the same board as the app.
+- `play/js/core.js`: the model and the generator, ported from the game's `MegaWordSearch.Core` (with .NET's `System.Random`), so the same options and seed give the same board as the app; «Beat the kitten»'s boards, and its kitten's every look, are the app's too.
 - `play/js/board.js`: the board on a canvas (drag, pinch or wheel to zoom, taps to select letters, minimap); `play/js/app.js`: the screens; `play/js/sound.js`: the sounds.
-- `play/content/` and `play/fonts/`: words, challenges, emoji, Wordittos, the cats theme's stickers, texts and fonts, copied from the game by `python3 tools/sync-play-content.py [path to the game]` (default `../mega-word-search-game`; macOS, it scales the Wordittos and the stickers down with `sips`). Run it again whenever the game's content changes.
-- `tools/check-generator.sh [path to the game]` (macOS, needs .NET) generates every stage in the three languages and some custom games with the game's `tools/PrintPuzzle` and with `core.js`, and checks they are the same boards. Run it after changing the game's generator or words.
+- `play/content/` and `play/fonts/`: words, challenges, emoji, Wordittos, the cats theme's stickers, the drawings of «Beat the kitten», texts and fonts, copied from the game by `python3 tools/sync-play-content.py [path to the game]` (default `../mega-word-search-game`; macOS, it scales the Wordittos and the stickers down with `sips`, and leaves the kitten's drawings in 256 colours with the game's `tools/quantize-png.py`, which needs Python's PIL). Run it again whenever the game's content changes.
+- `tools/check-generator.sh [path to the game]` (macOS, needs .NET) generates every stage in the three languages, some custom games and boards of «Beat the kitten» with the game's `tools/PrintPuzzle` and with `core.js`, and checks they are the same boards. Run it after changing the game's generator or words.
 
 To try it locally (ES modules need a server):
 

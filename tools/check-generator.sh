@@ -1,6 +1,6 @@
 #!/bin/bash
 # Checks that play/js/core.js generates the same boards as the game: every stage of every challenge in the three
-# languages, and some custom games, against the game's tools/PrintPuzzle. macOS (jsc), with the game's repository
+# languages, some custom games and boards of «Beat the kitten» (with the order of their words), against the game's tools/PrintPuzzle. macOS (jsc), with the game's repository
 # at ../mega-word-search-game or the path given, and .NET.
 #   tools/check-generator.sh [path to the game's repository]
 set -u
@@ -20,6 +20,18 @@ expected() {
     state == 1 { state = 2; next }
     state == 2 { if ($0 == "") state = 3; else print }
     /^Worditto:/ { cells = $0; sub(/^[^(]*/, "", cells); print "Worditto: " cells }'
+}
+# A board of «Beat the kitten» and its words in order (without the shape's name).
+expected_kitten() {
+  dotnet "$PRINT" "$@" | awk 'NR > 2' | sed -E -e '/^$/d' -e 's/^([0-9]+)\. (.*[^ ]) +[A-Za-z]+ +(\(.*)$/\1. \2 \3/'
+}
+check_kitten() {
+  local name="$1" js="$2"; shift 2
+  total=$((total + 1))
+  if ! diff <(expected_kitten "$@") <($JSC -m tools/print-puzzle.mjs -- $js) > /dev/null; then
+    echo "DIFFERENT: $name"
+    failed=$((failed + 1))
+  fi
 }
 check() {
   local name="$1" js="$2"; shift 2
@@ -44,5 +56,12 @@ check "custom all" "es custom 40 40 30 All 123456" --width 40 --height 40 --word
 check "custom de" "de custom 60 60 50 Straight,Diagonals,Reversed 987654 frutas,colores" --language de --width 60 --height 60 --words 50 --categories frutas,colores --shapes Straight,Diagonals,Reversed --seed 987654
 check "custom symbols" "es custom 20 20 12 Horizontal,Vertical,SnakeOrthogonal 555555 - symbols:#1" --width 20 --height 20 --words 12 --shapes Horizontal,Vertical,SnakeOrthogonal --board symbols:●■▲◆★ --seed 555555
 check "custom en snakes" "en custom 80 80 98 Snake,Horizontal -42" --language en --width 80 --height 80 --words 98 --shapes Snake,Horizontal --seed -42
+for language in es en de; do
+  for level in 1 9 10 15 21 30 45 60 61 90 101 120 135; do
+    for seed in 7 12345 987654321 1680080554 2147483646; do
+      check_kitten "$language kitten $level/$seed" "$language kitten $level $seed" --language "$language" --kitten "$level" --seed "$seed"
+    done
+  done
+done
 echo "$((total - failed))/$total boards are the same"
 [ "$failed" -eq 0 ]

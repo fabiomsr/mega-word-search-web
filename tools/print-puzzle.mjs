@@ -2,6 +2,7 @@
 // (tools/check-generator.sh). Runs in JavaScriptCore's jsc (macOS), from the repository's root:
 //   jsc -m tools/print-puzzle.mjs -- es world 1 1
 //   jsc -m tools/print-puzzle.mjs -- es custom 40 40 30 All 123456 [categories|-] [board:chars|board:#preset]
+//   jsc -m tools/print-puzzle.mjs -- es kitten 45 12345      (a board of «Beat the kitten», its words in the order asked)
 import * as core from "../play/js/core.js";
 
 const [language, mode, ...rest] = globalThis.arguments;
@@ -9,8 +10,23 @@ const load = (name) => JSON.parse(read(`play/content/${name}`));
 const bank = core.makeWordBank(load(`words-${language}.json`), (name) => `Es de la categoría «${name}»`);
 const emoji = core.makeEmojiCatalog(load("emoji.json"));
 
+const printGrid = (grid) => {
+  const lines = [];
+  for (let row = 0; row < grid.height; row++) {
+    const letters = [];
+    for (let col = 0; col < grid.width; col++) letters.push(grid.at(row, col));
+    lines.push(letters.join(" "));
+  }
+  return lines;
+};
+
 let spec, seed;
-if (mode === "world") {
+if (mode === "kitten") {
+  const board = core.kittenBoard(Number(rest[0]), Number(rest[1]), bank);
+  const order = core.kittenOrder(board).map((placed, i) => `${i + 1}. ${placed.word.text} ${placed.cells.map((c) => `(${c.row},${c.col})`).join(" ")}`);
+  print([...printGrid(board.grid), ...order].join("\n"));
+  quit();
+} else if (mode === "world") {
   const worlds = core.makeWorlds(load("worlds.json"), emoji);
   const stage = worlds[Number(rest[0]) - 1].stages[Number(rest[1]) - 1];
   spec = core.stageSpec(stage, bank);
@@ -31,11 +47,6 @@ if (mode === "world") {
 }
 
 const puzzle = core.generate(spec, bank, seed);
-const lines = [`${puzzle.words.length}/${spec.wordCount} words`];
-for (let row = 0; row < puzzle.grid.height; row++) {
-  const letters = [];
-  for (let col = 0; col < puzzle.grid.width; col++) letters.push(puzzle.grid.at(row, col));
-  lines.push(letters.join(" "));
-}
+const lines = [`${puzzle.words.length}/${spec.wordCount} words`, ...printGrid(puzzle.grid)];
 if (puzzle.secret) lines.push(`Worditto: ${puzzle.secret.cells.map((c) => `(${c.row},${c.col})`).join(" ")}`);
 print(lines.join("\n"));

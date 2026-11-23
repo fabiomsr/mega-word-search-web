@@ -1,7 +1,7 @@
 // Mega Word Search in the browser: the screens of the game (UI/Screens) over the model and generator of core.js,
 // with the progress, options and the game in progress kept in localStorage. A custom game can be shared as a link:
 // ?seed=…&lang=…&size=…&words=…&shapes=…&board=…&cats=…&time=… gives everyone the same board (also in the app,
-// with the same options and seed).
+// with the same options and seed). «Beat the kitten» plays as in the app, its progress kept too.
 import * as core from "./core.js";
 import { BoardView, hexColor, letterOn } from "./board.js";
 import { play, sound } from "./sound.js";
@@ -133,7 +133,7 @@ const app = document.getElementById("app");
 const content = { banks: {}, strings: { en: {}, de: {} } };
 let language = "es";
 let bank, worlds, emoji;
-let settings, progress, custom, saved;
+let settings, progress, custom, saved, kitten;
 let wordittoAtlas = null;
 let emojiAtlas = null;
 // The options' tab shown: 0 the look, 1 the rest.
@@ -328,7 +328,7 @@ function placePaws(id) {
   layer.replaceChildren();
   if (!id || settings.theme !== "cats") return;
   const width = window.innerWidth, height = window.innerHeight;
-  const occupied = [...app.querySelectorAll("button, h1, h2, a, p, .section-title, .display, .count, .sticker, .sample, input")]
+  const occupied = [...app.querySelectorAll("button, h1, h2, a, p, .section-title, .display, .count, .sticker, .sample, input, .kpic, .ring, .badge, .bought, .shop-item")]
     .map((element) => element.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
   let hash = 2166136261;
   for (const c of id) hash = Math.imul(hash ^ c.charCodeAt(0), 16777619);
@@ -430,6 +430,7 @@ function homeScreen() {
           el("div.menu.home", {},
             continuing ? button(tr("Continuar"), () => resumeSaved(continuing), { sub: savedTitle(continuing), cls: "resume" }) : null,
             button(tr("Desafíos"), () => push(worldsScreen())),
+            button(tr("Gánale al gatito"), () => push(kittenLobbyScreen()), { sub: tr("Nivel {0}", core.kittenLevel(kitten)), cls: "kitten" }),
             button("Wordittos", () => push(wordittosScreen()), { sub: `${found}/${core.WORDITTO_PICTURES}` }),
             button(tr("Partida custom"), () => push(customScreen())),
             button(tr("Opciones"), () => push(optionsScreen())),
@@ -1534,51 +1535,7 @@ function puzzleScreen(game) {
     }
   }
 
-  // -- Confetti --
-
-  function confetti(colors) {
-    const canvas = el("canvas.confetti");
-    elements.root.append(canvas);
-    const ctx = canvas.getContext("2d");
-    const dpr = window.devicePixelRatio || 1;
-    const w = window.innerWidth, h = window.innerHeight;
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
-    canvas.style.width = `${w}px`;
-    canvas.style.height = `${h}px`;
-    const pieces = Array.from({ length: 140 }, () => ({
-      x: w / 2 + (Math.random() - 0.5) * w * 0.3, y: h * 0.45,
-      vx: (Math.random() - 0.5) * w * 1.4, vy: -h * (0.6 + Math.random() * 0.8),
-      size: 5 + Math.random() * 6, angle: Math.random() * 6, spin: (Math.random() - 0.5) * 12,
-      color: colors[Math.floor(Math.random() * colors.length)],
-    }));
-    let start = 0, previous = 0;
-    const step = (now) => {
-      if (!start) start = previous = now;
-      const dt = Math.min(0.05, (now - previous) / 1000);
-      previous = now;
-      const t = (now - start) / 1000;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, w, h);
-      ctx.globalAlpha = Math.max(0, Math.min(1, 3 - t));
-      for (const p of pieces) {
-        p.vy += h * 1.3 * dt;
-        p.vx *= 1 - 1.2 * dt;
-        p.x += p.vx * dt;
-        p.y += p.vy * dt;
-        p.angle += p.spin * dt;
-        ctx.save();
-        ctx.translate(p.x, p.y);
-        ctx.rotate(p.angle);
-        ctx.fillStyle = p.color;
-        ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
-        ctx.restore();
-      }
-      if (t < 3) requestAnimationFrame(step);
-      else canvas.remove();
-    };
-    requestAnimationFrame(step);
-  }
+  const confetti = (colors) => launchConfetti(elements.root, colors);
 
   // -- The screen --
 
@@ -1693,6 +1650,722 @@ function puzzleScreen(game) {
   }
 }
 
+// ---- Beat the kitten (UI/Screens/KittenLobbyScreen, KittenShopScreen, KittenDuelScreen and UI/KittenHelp) ----
+
+/** The kitten's colour: its paw, its trail and the words it finds. */
+const KITTEN_COLOR = [0xf0, 0x8a, 0x24];
+// Letters the player may select beyond the board's longest word before the first tapped is dropped.
+const SPARE_LETTERS = 4;
+// Points a second the level bar moves towards the progress'.
+const BAR_SPEED = 40;
+const KITTEN_LETTER_HEIGHT = 0.62;
+// The tutorial's id in helpsSeen, and its example word's seconds per letter.
+const KITTEN_HELP = "kitten";
+const TAP_TIME = 0.45;
+const KITTEN_HELP_PAGES = [
+  ["kitten", "Gánale al gatito", "Un gatito busca las mismas palabras que tú. Cada tablero tiene 5 palabras, y se juegan de una en una."],
+  ["taps", "¿Quién la encuentra antes?", "Tras la cuenta atrás, busca la palabra en el tablero y toca sus letras una a una. Si la encuentras antes que el gatito, ganas la ronda."],
+  ["badge", "Sube de nivel", "Cada palabra que ganas da 20 puntos y una moneda; con 100 puntos subes de nivel y te espera otro gatito. Si gana él, pierdes 20 puntos, pero nunca bajas de nivel. Cada 15 niveles, una insignia."],
+  ["boss", "Jefes y tienda", "Cada 10 niveles te espera un jefe: contra él, cada palabra perdida quita más puntos. Con tus monedas, compra en la tienda escudos que te protegen y potenciadores que multiplican tus puntos."],
+];
+
+const saveKitten = () => store("kitten", kitten);
+
+/** A drawing of «Beat the kitten» or a kitten of the cats theme, shown in every theme (see KittenPictures). */
+function kittenPicture(index, cls = "") {
+  const sheet = core.KITTEN_SHEETS.find((s) => index >= s.first && index < s.first + s.count);
+  const [url, columns, rows, at] = sheet
+    ? [`content/kitten-${sheet.name}.png`, sheet.columns, Math.ceil(sheet.count / sheet.columns), index - sheet.first]
+    : ["content/stickers.png", STICKER_COLUMNS, STICKER_ROWS, index];
+  return el(`span.kpic${cls ? "." + cls : ""}`, {
+    style: {
+      backgroundImage: `url(${url})`,
+      backgroundSize: `${columns * 100}% ${rows * 100}%`,
+      backgroundPosition: `${((at % columns) / (columns - 1)) * 100}% ${(Math.floor(at / columns) / Math.max(1, rows - 1)) * 100}%`,
+    },
+  });
+}
+
+/** A gold coin and a count after it. */
+const coins = (text, cls = "") => el(`span.coins${cls ? "." + cls : ""}`, {}, el("span.coin"), String(text));
+
+function svg(markup, cls) {
+  const span = el(`span.${cls}`);
+  span.innerHTML = markup;
+  return span;
+}
+
+/** A shield (of wood, iron or gold: UI/ItemIcon.cs). */
+function shieldIcon(color = "#f5c542") {
+  const shape = (x, y, w, h) => `M${x} ${y}h${w}v${h * 0.45}q0 ${h * 0.35} ${-w / 2} ${h * 0.55}q${-w / 2} ${-h * 0.2} ${-w / 2} ${-h * 0.55}z`;
+  return svg(`<svg viewBox="0 0 100 100"><path d="${shape(10, 0, 80, 100)}" fill="${color}"/><path d="${shape(10, 0, 80, 100)}" fill="rgba(0,0,0,.35)"/>`
+    + `<path d="${shape(19, 8, 62, 80)}" fill="${color}"/><rect x="30" y="20" width="6" height="30" fill="rgba(255,255,255,.45)"/></svg>`, "icon");
+}
+
+/** A booster: «×N» in a disc. */
+function boosterIcon(multiplier) {
+  const color = multiplier >= 3 ? "#e56b2e" : "#8e5ce8";
+  return svg(`<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="${color}"/><circle cx="50" cy="50" r="50" fill="rgba(0,0,0,.3)"/>`
+    + `<circle cx="50" cy="50" r="42" fill="${color}"/><text x="50" y="52" text-anchor="middle" dominant-baseline="middle" font-size="40" fill="#fff" font-family="Ubuntu Mono, monospace">×${multiplier}</text></svg>`, "icon");
+}
+
+const itemIcon = (item) => (item.kind === "shield" ? shieldIcon(item.amount <= 3 ? "#b07442" : item.amount <= 6 ? "#9ea8b4" : "#f5c542") : boosterIcon(item.multiplier));
+
+/** The shield's charges and the booster running, with their icons. */
+function kittenItems() {
+  const parts = [];
+  if (kitten.shields > 0) parts.push(el("span.item", {}, shieldIcon(), String(kitten.shields)));
+  if (core.hasBooster(kitten)) parts.push(el("span.item", {}, boosterIcon(kitten.boosterMultiplier), String(kitten.boosterWins)));
+  return parts;
+}
+
+/** An arrow along a direction [row, col], in a tile. */
+function arrowTile(step, isNew) {
+  const angle = (Math.atan2(step[0], step[1]) * 180) / Math.PI;
+  return svg(`<svg viewBox="-50 -50 100 100"><g transform="rotate(${angle})"><path d="M-30 0H30M30 0l-17 -12M30 0l-17 12"/></g></svg>`, `dir${isNew ? ".new" : ""}`);
+}
+
+const bossTag = () => el("span.boss-tag", {}, tr("Jefe").toUpperCase());
+
+/** Shrinks an element's font until its text fits its width (Fit in the game). */
+function fitText(element, size) {
+  element.style.fontSize = `${size}px`;
+  const room = element.clientWidth;
+  if (room > 0 && element.scrollWidth > room) element.style.fontSize = `${Math.max(10, Math.floor((size * room * 0.97) / element.scrollWidth))}px`;
+}
+
+function kittenLobbyScreen() {
+  let help = null;
+  const rivalLevel = () => kitten.board?.level ?? core.kittenLevel(kitten);
+  return {
+    paws: "kitten",
+    render() {
+      const level = core.kittenLevel(kitten), points = core.kittenLevelPoints(kitten);
+      const rival = core.kittenRival(rivalLevel());
+      const ring = el("div.ring", {});
+      ring.innerHTML = '<svg viewBox="0 0 200 200"><circle class="track" cx="100" cy="100" r="88"/><circle class="fill" cx="100" cy="100" r="88" pathLength="100"/></svg>';
+      ring.dataset.part = String((points / core.KITTEN_POINTS_PER_LEVEL) * 100);
+      ring.classList.toggle("empty", points === 0);
+      ring.append(el("span.label", {}, tr("Nivel")), el("span.level", {}, String(level)), el("span.points", {}, `${points}/${core.KITTEN_POINTS_PER_LEVEL}`));
+      const badges = el("div.badges", {}, Array.from({ length: core.KITTEN_BADGES }, (_, i) =>
+        level >= core.kittenBadgeLevel(i) ? kittenPicture(core.kittenBadgeSticker(i), "badge") : el("span.badge.missing", {}, String(core.kittenBadgeLevel(i)))));
+      const items = kittenItems();
+      return el("div.screen", {},
+        el("div.column.kitten-lobby", {},
+          el("div.topbar", {}, backButton(), title("h2", tr("Gánale al gatito")), el("span.count", {}, coins(kitten.coins))),
+          el("div.lobby-body", {},
+            el("div.lobby-side", {}, ring, badges),
+            el("div.lobby-side", {},
+              el("div.rival", {},
+                rival.boss ? bossTag() : el("span.rival-label", {}, tr("Tu rival")),
+                kittenPicture(rival.sticker, `rival-pic${rival.boss ? ".boss" : ""}`),
+                el("span.rival-name", {}, rival.name),
+                kitten.wins + kitten.losses > 0 ? el("span.record", {}, tr("Palabras ganadas: {0} · perdidas: {1}", kitten.wins, kitten.losses)) : null,
+                rival.boss ? el("span.boss-warning", {}, tr("Cada palabra perdida quita {0} puntos", core.kittenPenalty(rivalLevel()))) : null),
+              el("div.shop-row", {},
+                button(tr("Tienda"), () => push(kittenShopScreen()), { cls: "shop" }),
+                el("div.bought", {}, items.length ? items : el("span.none", {}, tr("Nada comprado")))),
+              button(tr("Jugar"), () => push(kittenDuelScreen(startKittenMatch())), { cls: "play" }),
+            ),
+          ),
+          el("button.icon-btn.help-btn", { onclick: () => showHelp(), "aria-label": "?" }, "?"),
+        ),
+      );
+    },
+    shown() {
+      // The ring fills up to the player's points.
+      const fill = app.querySelector(".ring .fill");
+      if (fill) requestAnimationFrame(() => requestAnimationFrame(() => fill.style.strokeDashoffset = String(100 - Number(fill.closest(".ring").dataset.part))));
+      if (!settings.helpsSeen.includes(KITTEN_HELP) && !help) showHelp();
+    },
+    hidden() {
+      help?.remove();
+      help = null;
+    },
+    onBack() {
+      if (!help) return false;
+      closeHelp();
+      return true;
+    },
+  };
+
+  function closeHelp() {
+    help?.remove();
+    help = null;
+    if (!settings.helpsSeen.includes(KITTEN_HELP)) {
+      settings.helpsSeen.push(KITTEN_HELP);
+      saveSettings();
+    }
+  }
+
+  /** The tutorial: a page each, with a picture, a title and a paragraph; Skip and Next («¡A jugar!» on the last). */
+  function showHelp() {
+    help?.remove();
+    let page = 0, begin = 0;
+    help = el("div.overlay.kitten-help");
+    app.append(help);
+    const showPage = () => {
+      const [picture, heading, text] = KITTEN_HELP_PAGES[page];
+      const last = page === KITTEN_HELP_PAGES.length - 1;
+      let art;
+      if (picture === "kitten") art = kittenPicture(core.kittenRival(1).sticker, "help-pic");
+      else if (picture === "badge") art = kittenPicture(core.kittenBadgeSticker(0), "help-pic");
+      else if (picture === "boss") art = el("div.help-boss", {}, kittenPicture(core.kittenRival(core.KITTEN_BOSS_EVERY).sticker, "help-pic"), el("div.help-items", {}, shieldIcon(), boosterIcon(2)));
+      else art = el("div.help-taps", {}, [...tr("GATO")].map((letter) => el("span.tile", {}, letter)), el("span.finger"));
+      help.replaceChildren(el("div.help-box", {},
+        title("h3", tr(heading)),
+        el("div.help-art", {}, art),
+        // Every page's paragraph in the same place, only this one seen: the box is as tall as the longest.
+        el("div.help-texts", {}, KITTEN_HELP_PAGES.map(([, , other]) => el(`p${other === text ? "" : ".unseen"}`, {}, tr(other)))),
+        el("div.dots", {}, KITTEN_HELP_PAGES.map((_, i) => el(`span${i === page ? ".on" : ""}`))),
+        el("div.help-buttons", {},
+          last ? null : button(tr("Saltar"), closeHelp, { cls: "secondary" }),
+          button(last ? tr("¡A jugar!") : tr("Siguiente"), () => {
+            if (last) closeHelp();
+            else {
+              page++;
+              showPage();
+            }
+          }))));
+      fitText(help.querySelector("h3"), 30);
+      fitRays();
+      begin = 0;
+      if (picture === "taps") requestAnimationFrame(tapStep);
+    };
+    // The example word's letters tapped one by one, then found, and again.
+    const tapStep = (now) => {
+      const taps = help?.querySelector(".help-taps");
+      if (!taps) return;
+      if (!begin) begin = now;
+      const tiles = taps.querySelectorAll(".tile"), letters = tiles.length;
+      const age = (now - begin) / 1000, cycle = (letters + 3) * TAP_TIME;
+      const tapped = Math.min(letters, Math.floor((age % cycle) / TAP_TIME));
+      const found = tapped === letters;
+      tiles.forEach((tile, i) => {
+        tile.classList.toggle("tapped", i < tapped && !found);
+        tile.classList.toggle("found", found);
+      });
+      const finger = taps.querySelector(".finger");
+      finger.style.visibility = found ? "hidden" : "visible";
+      if (!found) finger.style.left = `${tiles[tapped].offsetLeft + tiles[tapped].offsetWidth / 2}px`;
+      requestAnimationFrame(tapStep);
+    };
+    showPage();
+  }
+}
+
+/** The shop: the coins, what is running, and the shields and boosters with their prices. */
+function kittenShopScreen() {
+  let bought = null, boughtTimer = 0;
+  return {
+    paws: "shop",
+    render() {
+      const status = [];
+      if (kitten.shields > 0) status.push(tr("Escudo: {0} cargas", kitten.shields));
+      if (core.hasBooster(kitten)) status.push(tr("Potenciador ×{0}: {1} victorias", kitten.boosterMultiplier, kitten.boosterWins));
+      const row = (item) => {
+        const justBought = item === bought;
+        const about = justBought ? tr("¡Comprado!")
+          : core.waitsForBooster(kitten, item) ? tr("Cuando se acabe el que tienes")
+          : item.kind === "shield" ? tr("Protege {0} palabras perdidas", item.amount)
+          : tr("×{0} puntos en {1} palabras ganadas", item.multiplier, item.amount);
+        return el(`div.shop-item${justBought ? ".bought" : ""}`, {},
+          itemIcon(item),
+          el("div.about", {}, el("span.name", {}, tr(item.name)), el("span.sub", {}, about)),
+          el("button.btn.price", {
+            disabled: !core.canBuyKittenItem(kitten, item),
+            onclick: () => {
+              if (!core.buyKittenItem(kitten, item)) return;
+              saveKitten();
+              play("found");
+              bought = item;
+              clearTimeout(boughtTimer);
+              boughtTimer = setTimeout(() => {
+                bought = null;
+                if (stack[stack.length - 1]?.isShop) refresh();
+              }, 1400);
+              refresh();
+            },
+          }, coins(item.price)));
+      };
+      const section = (kind, name) => el("div.shop-section", {},
+        el("div.section-title", {}, name),
+        core.KITTEN_ITEMS.filter((item) => item.kind === kind).map(row));
+      return el("div.screen", {},
+        el("div.column.wide.kitten-shop", {},
+          el("div.topbar", {}, backButton(), title("h2", tr("Tienda")), el("span.count", {}, coins(kitten.coins))),
+          el("p.subtitle.tight", {}, status.length ? status.join(" · ") : tr("Sin escudo ni potenciador")),
+          el("div.shop-columns", {}, section("shield", tr("Escudos")), section("booster", tr("Potenciadores"))),
+        ),
+      );
+    },
+    isShop: true,
+    shown() {
+      // Each on a line, smaller if it would not fit.
+      for (const name of app.querySelectorAll(".shop-item .name")) fitText(name, 20);
+      for (const sub of app.querySelectorAll(".shop-item .sub")) fitText(sub, 15);
+      fitText(app.querySelector(".kitten-shop .subtitle"), 20);
+    },
+    hidden() {
+      clearTimeout(boughtTimer);
+      bought = null;
+    },
+  };
+}
+
+/** The board halfway, or a new one of the player's level; the progress keeps it from now on. */
+function startKittenMatch() {
+  const match = core.KittenMatch.start(kitten, bank, () => Math.floor(Math.random() * 2147483647));
+  saveKitten();
+  return match;
+}
+
+/**
+ * A board against the kitten: at the top the rival (sticker, name, what it says and who won each round), under it the
+ * word to find, then the whole board and at the bottom the player's level bar; in landscape the kitten, the word and the
+ * bar go in a column on the left. Before each round the board is covered by the word (and, the first time, the board's
+ * directions) and 3-2-1; at the end, a summary with the next board.
+ */
+function kittenDuelScreen(match) {
+  const puzzle = match.puzzle;
+  const palette = PALETTES[settings.palette]?.[1] ?? PALETTES[0][1];
+  const selectionColor = hexColor((SELECTION_COLORS[settings.selectionColor] ?? SELECTION_COLORS[0])[1]);
+  const capacity = Math.max(...puzzle.words.map((placed) => placed.word.letters.length)) + SPARE_LETTERS;
+  const category = puzzle.spec.categories[0];
+  const categoryName = category && bank.contains(category) ? bank.get(category).name : null;
+  const selection = [];
+  const elements = {};
+  let view, frame = 0, last = 0, time = 0, playerWords = 0, paused = false, overlay = null;
+  let shownPoints = kitten.points, roundPoints = 0, hop = Infinity, shake = Infinity, boardOverShown = false;
+  let shownKey = "", shownNumber = -1;
+
+  const colorOf = (round) => (round.playerWon ? hexColor(palette[playerWords++ % palette.length]) : KITTEN_COLOR);
+
+  match.onRoundEnded = (round) => {
+    deselectAll();
+    // The kitten's letters are in its colour already (it selected them one by one).
+    view.animator.found(round.placed.cells, colorOf(round), !round.playerWon);
+    view.extraMarks = [];
+    view.dirty = true;
+    roundPoints = Math.round(kitten.points - shownPoints);
+    if (round.playerWon) {
+      shake = 0;
+      play("found");
+      vibrate(30);
+    } else {
+      hop = 0;
+      play("hint", -0.3);
+    }
+    saveKitten();
+  };
+
+  function vibrate(pattern) {
+    if (settings.vibration && navigator.vibrate) navigator.vibrate(pattern);
+  }
+
+  function onTap(cell) {
+    if (paused || match.phase !== core.KittenPhase.Playing) return;
+    const at = selection.findIndex((c) => c.row === cell.row && c.col === cell.col);
+    const added = at < 0;
+    if (added) {
+      selection.push(cell);
+      if (selection.length > capacity) view.animator.setSelected(selection.shift(), false);
+    } else selection.splice(at, 1);
+    view.animator.setSelected(cell, added);
+    view.dirty = true;
+    play("tick", added ? -0.4 + 0.06 * selection.length : -0.7);
+    if (added) match.tryPlayer(selection);
+  }
+
+  function deselectAll() {
+    for (const cell of selection) view.animator.setSelected(cell, false);
+    selection.length = 0;
+  }
+
+  // -- Pause --
+
+  function pause() {
+    if (paused || match.phase === core.KittenPhase.BoardOver) return;
+    paused = true;
+    view.cancelPointers();
+    overlay = el("div.overlay", {},
+      el("h2", {}, tr("Pausa")),
+      el("p.sub", {}, tr("Gánale al gatito")),
+      el("div.menu", {}, button(tr("Continuar"), resume), button(tr("Salir"), close)));
+    elements.root.append(overlay);
+  }
+
+  function resume() {
+    overlay?.remove();
+    overlay = null;
+    paused = false;
+    last = 0;
+  }
+
+  // -- Layout --
+
+  function layout() {
+    const landscape = window.innerWidth > window.innerHeight;
+    elements.root.classList.toggle("landscape", landscape);
+    const area = elements.board.getBoundingClientRect();
+    const margin = landscape ? 12 : 0;
+    view.setView(margin, margin, area.width - 2 * margin, area.height - 2 * margin);
+    placeCover();
+    fitText(elements.target, 30);
+    view.dirty = true;
+  }
+
+  /** The board's area that a cover takes: the board, a little bigger, and tall enough for its text. */
+  function placeCover() {
+    const topLeft = view.toScreen(0, 0), bottomRight = view.toScreen(puzzle.grid.width, puzzle.grid.height);
+    const frameWidth = Math.ceil(view.zoom * 0.12) + 4;
+    const areaHeight = elements.board.clientHeight;
+    let top = topLeft.y - frameWidth, height = bottomRight.y - topLeft.y + 2 * frameWidth;
+    const minHeight = Math.min(areaHeight, 360);
+    if (height < minHeight) {
+      top = areaHeight / 2 - minHeight / 2;
+      height = minHeight;
+    }
+    Object.assign(elements.cover.style, {
+      left: `${topLeft.x - frameWidth}px`, top: `${top}px`, width: `${bottomRight.x - topLeft.x + 2 * frameWidth}px`, height: `${height}px`,
+    });
+  }
+
+  // -- What the kitten says, the rounds, the word and the level --
+
+  function says() {
+    switch (match.phase) {
+      case core.KittenPhase.Countdown: return match.round === 0 ? tr("¡A ver quién gana!") : tr("¡Esta es mía!");
+      case core.KittenPhase.Playing: return match.kitten.isSelecting ? tr("¡La tengo!") : tr("Buscando…");
+      case core.KittenPhase.RoundOver: return match.rounds[match.rounds.length - 1].playerWon ? tr("¡Qué rápido!") : tr("¡La encontré!");
+      default: return match.boardWon ? tr("¡Revancha!") : tr("¡Miau! Gané yo");
+    }
+  }
+
+  /** The parts that change with the phase: what the kitten says, the rounds' dots, the word and its line. */
+  function renderState() {
+    const key = `${match.phase}|${match.round}|${match.rounds.length}|${says()}|${kitten.shields}|${kitten.boosterWins}`;
+    if (key === shownKey) return;
+    shownKey = key;
+    elements.says.textContent = says();
+    fitText(elements.says, 17);
+    elements.dots.replaceChildren(...Array.from({ length: core.KITTEN_WORDS }, (_, i) => {
+      if (i < match.rounds.length) return el(`span.dot${match.rounds[i].playerWon ? ".player" : ".kitten"}`);
+      return el(`span.dot${i === match.round && match.phase !== core.KittenPhase.BoardOver ? ".now" : ""}`);
+    }));
+    elements.items.replaceChildren(...kittenItems());
+    const over = match.phase === core.KittenPhase.BoardOver;
+    if (match.phase === core.KittenPhase.RoundOver) {
+      const round = match.rounds[match.rounds.length - 1], name = match.rival.name;
+      const result = round.playerWon ? tr("¡La encontraste! +{0}", roundPoints)
+        : match.roundShielded ? tr("¡{0} la encontró! El escudo te salva", name)
+        : roundPoints < 0 ? tr("¡{0} la encontró! {1}", name, roundPoints) : tr("¡{0} la encontró!", name);
+      elements.line.className = `kline ${round.playerWon ? "player" : "kitten"}`;
+      elements.line.replaceChildren(result, match.roundCoins > 0 ? coins(`+${match.roundCoins}`, "gold") : "");
+    } else {
+      elements.line.className = "kline";
+      elements.line.replaceChildren(over ? "" : tr("Palabra {0} de {1}", match.round + 1, core.KITTEN_WORDS));
+    }
+    elements.target.textContent = over ? "" : match.target.word.text.toUpperCase();
+    fitText(elements.target, 30);
+    elements.cover.classList.toggle("hidden", match.phase !== core.KittenPhase.Countdown && !over);
+    if (match.phase === core.KittenPhase.Countdown) renderCountdown();
+    if (over) renderSummary();
+  }
+
+  /** Over the covered board: the word, the board's directions on the first round shown, and 3-2-1. */
+  function renderCountdown() {
+    const added = core.kittenNewShapes(match.level);
+    const steps = core.STEPS.filter(([shape]) => match.shapes & shape);
+    shownNumber = -1;
+    elements.cover.replaceChildren(...[
+      el("span.look-for", {}, tr("Busca")),
+      el("span.cover-word", {}, match.target.word.text.toUpperCase()),
+      categoryName ? el("span.cover-category", {}, categoryName) : null,
+      match.showsShapes ? el("div.cover-shapes", {},
+        el("span", {}, tr("Direcciones de este tablero")),
+        el("div.dirs", {}, steps.map(([shape, row, col]) => arrowTile([row, col], (added & shape) !== 0)))) : null,
+      elements.number = el("span.number"),
+      match.rival.boss ? el("span.boss-warning", {}, tr("Contra un jefe, cada palabra perdida quita {0} puntos", core.kittenPenalty(match.level))) : null].filter(Boolean));
+    fitText(elements.cover.querySelector(".cover-word"), 48);
+  }
+
+  /** Over the board at the end: who won, the rounds, a level up with the next rival or a badge, and the buttons. */
+  function renderSummary() {
+    const won = match.boardWon, name = match.rival.name, level = core.kittenLevel(kitten);
+    let middle;
+    const badge = match.leveledUp ? core.kittenBadgeEarnedAt(level) : -1;
+    if (match.leveledUp && match.level === core.KITTEN_MAX_LEVEL) {
+      middle = [el("span.up", {}, tr("¡Felicidades! Has completado los {0} niveles", core.KITTEN_MAX_LEVEL)),
+        el("span.news", {}, tr("Puedes seguir subiendo de nivel")), kittenPicture(core.kittenBadgeSticker(core.KITTEN_BADGES - 1), "summary-pic")];
+    } else if (badge >= 0) {
+      middle = [el("span.up", {}, tr("¡Subes al nivel {0}!", level)), el("span.news", {}, tr("¡Nueva insignia!")), kittenPicture(core.kittenBadgeSticker(badge), "summary-pic")];
+    } else if (match.leveledUp) {
+      const next = core.kittenRival(level);
+      middle = [el("span.up", {}, tr("¡Subes al nivel {0}!", level)), el("span.next", {}, tr("Tu próximo rival: {0}", next.name)), kittenPicture(next.sticker, "summary-pic")];
+    } else {
+      middle = [kittenPicture(match.rival.sticker, "summary-pic")];
+    }
+    const boardCoins = match.boardCoins;
+    const coinText = match.boardBonus > 0 ? tr("+{0} monedas (×{1} por ganar el tablero)", boardCoins + match.boardBonus, core.KITTEN_BOARD_WON_FACTOR)
+      : boardCoins === 1 ? tr("+1 moneda") : tr("+{0} monedas", boardCoins);
+    elements.cover.replaceChildren(...[
+      el(`span.summary-title${won ? "" : ".lost"}`, {}, won ? tr("¡Le ganaste a {0}!", name) : tr("Esta vez ganó {0}", name)),
+      el("span.score", {}, tr("Tú {0} · {1} {2}", match.playerWins, name, match.kittenWins)),
+      el("div.summary-middle", {}, middle),
+      boardCoins > 0 ? coins(coinText, "gold") : null,
+      el("div.summary-buttons", {},
+        button(tr("Siguiente tablero"), () => push(kittenDuelScreen(startKittenMatch()), { replace: true })),
+        button(tr("Salir"), close, { cls: "secondary" }))].filter(Boolean));
+    fitText(elements.cover.querySelector(".summary-title"), 30);
+  }
+
+  function updateLevel() {
+    const points = Math.floor(shownPoints);
+    const part = (shownPoints % core.KITTEN_POINTS_PER_LEVEL) / core.KITTEN_POINTS_PER_LEVEL;
+    const level = tr("Nivel {0}", core.kittenLevelOf(points)), count = `${points % core.KITTEN_POINTS_PER_LEVEL}/${core.KITTEN_POINTS_PER_LEVEL}`;
+    if (elements.level.textContent !== level) elements.level.textContent = level;
+    if (elements.levelCount.textContent !== count) elements.levelCount.textContent = count;
+    elements.levelFill.style.width = part > 0 ? `max(18px, ${part * 100}%)` : "0";
+  }
+
+  // -- The kitten on the board: the letters that fit, those it selects, its trail and its paw --
+
+  function kittenMarks() {
+    const search = match.kitten;
+    if (match.phase !== core.KittenPhase.Playing || !search.look) {
+      if (view.extraMarks.length) view.extraMarks = [];
+      return;
+    }
+    const marks = search.selected.map((cell) => ({ cell, color: KITTEN_COLOR, reveal: 1, scale: 1, white: 1 }));
+    if (search.isSelecting) {
+      let fill = Math.min(1, search.lookProgress / 0.5);
+      fill = 1 - (1 - fill) * (1 - fill);
+      marks.push({ cell: search.look.cell, color: KITTEN_COLOR, reveal: fill, scale: 1, white: fill });
+    }
+    view.extraMarks = marks;
+    view.dirty = true;
+  }
+
+  const cellCenter = (origin, z, cell) => ({ x: origin.x + (cell.col + 0.5) * z, y: origin.y + (cell.row + 0.5) * z });
+  const kittenRgba = (alpha) => `rgba(${KITTEN_COLOR.join(",")},${alpha})`;
+
+  function underLetters(ctx, origin, z) {
+    const search = match.kitten;
+    if (match.phase !== core.KittenPhase.Playing || !search.look) return;
+    const matched = search.matched;
+    if (matched.length === 0) return;
+    // A band under the letters that fit while it checks a direction.
+    const first = cellCenter(origin, z, matched[0]), lastCell = cellCenter(origin, z, matched[matched.length - 1]);
+    ctx.strokeStyle = kittenRgba(0.45);
+    ctx.fillStyle = kittenRgba(0.45);
+    ctx.lineWidth = 0.72 * z;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(first.x, first.y);
+    ctx.lineTo(lastCell.x + 0.001, lastCell.y);
+    ctx.stroke();
+  }
+
+  function overLetters(ctx, origin, z) {
+    const search = match.kitten;
+    if (match.phase !== core.KittenPhase.Playing || !search.look) return;
+    const trail = search.trail;
+    const disc = (p, radius, color) => {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+      ctx.fill();
+    };
+    trail.forEach((cell, i) => disc(cellCenter(origin, z, cell), z * 0.12, kittenRgba(0.5 * ((i + 1) / (trail.length + 1)))));
+    // The paw on the cell it looks at, gliding there from the one before.
+    const to = cellCenter(origin, z, search.look.cell);
+    const from = search.isSelecting ? (search.selected.length ? cellCenter(origin, z, search.selected[search.selected.length - 1]) : to)
+      : trail.length ? cellCenter(origin, z, trail[trail.length - 1]) : to;
+    const t = Math.min(1, search.lookProgress * 3), eased = 1 - (1 - t) * (1 - t);
+    const at = { x: from.x + (to.x - from.x) * eased, y: from.y + (to.y - from.y) * eased };
+    disc(at, z * 0.5, kittenRgba(0.25));
+    ctx.save();
+    ctx.translate(at.x + z * 0.18, at.y + z * 0.3);
+    ctx.rotate(-0.35);
+    ctx.scale(z * 0.62, z * 0.62);
+    ctx.fillStyle = kittenRgba(0.9);
+    ctx.beginPath();
+    ctx.ellipse(0, 0.17, 0.27, 0.22, 0, 0, Math.PI * 2);
+    for (const [x, y, r] of [[-0.33, -0.1, 0.11], [-0.13, -0.3, 0.115], [0.13, -0.3, 0.115], [0.33, -0.1, 0.11]]) {
+      ctx.moveTo(x + r, y);
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+    }
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // -- Each frame --
+
+  function tick(now) {
+    frame = requestAnimationFrame(tick);
+    const seconds = last ? Math.min(0.1, (now - last) / 1000) : 0;
+    last = now;
+    time += seconds;
+    hop += seconds;
+    shake += seconds;
+    const target = kitten.points;
+    shownPoints = shownPoints < target ? Math.min(target, shownPoints + BAR_SPEED * seconds) : Math.max(target, shownPoints - BAR_SPEED * seconds);
+    if (!paused && !document.hidden && match.phase !== core.KittenPhase.BoardOver) match.update(seconds);
+    if (match.phase === core.KittenPhase.BoardOver && !boardOverShown) {
+      boardOverShown = true;
+      if (match.boardWon) {
+        launchConfetti(elements.root, palette.map((hex) => `#${hex.toString(16).padStart(6, "0")}`));
+        play("complete");
+        vibrate([40, 60, 40]);
+      }
+    }
+    renderState();
+    if (match.phase === core.KittenPhase.Countdown) {
+      const number = match.countdownNumber;
+      if (number !== shownNumber) {
+        shownNumber = number;
+        elements.number.textContent = number ? String(number) : "";
+        elements.number.classList.remove("pop");
+        if (number) {
+          void elements.number.offsetWidth;
+          elements.number.classList.add("pop");
+        }
+      }
+    }
+    // The rival bobs while it looks, hops when it finds a word and shakes when it loses one.
+    let dx = 0, dy = 0;
+    if (match.phase === core.KittenPhase.Playing) dy += 3 * Math.sin(time * 4);
+    if (hop < 0.6) dy -= 22 * Math.sin((hop / 0.6) * Math.PI);
+    if (shake < 0.5) dx += 6 * Math.sin(shake * 40) * (1 - shake / 0.5);
+    elements.rival.style.transform = `translate(${dx}px, ${dy}px)`;
+    updateLevel();
+    kittenMarks();
+    view.update(seconds);
+    view.draw();
+  }
+
+  const onResize = () => layout();
+  const onKey = (e) => {
+    if (e.key !== "Escape") return;
+    if (paused) resume();
+    else pause();
+  };
+  const onVisibility = () => {
+    if (document.hidden) pause();
+  };
+
+  return {
+    render() {
+      if (elements.root) return elements.root;
+      const canvas = el("canvas.board");
+      const home = el("button.icon-btn", { onclick: pause, "aria-label": tr("Pausa") });
+      home.innerHTML = HOUSE;
+      elements.rival = kittenPicture(match.rival.sticker, "duel-pic");
+      elements.says = el("span.says");
+      elements.dots = el("span.dots");
+      elements.items = el("span.items");
+      elements.line = el("div.kline");
+      elements.target = el("div.ktarget");
+      elements.cover = el("div.kcover.hidden");
+      elements.board = el("div.kboard", {}, canvas, elements.cover);
+      elements.level = el("span.klevel-name");
+      elements.levelCount = el("span.klevel-count");
+      elements.levelFill = el("span.fill");
+      elements.root = el("div.kduel", {},
+        el("div.kbar", {}, home, el("span.title", {}, tr("Gánale al gatito"))),
+        el("div.khead", {}, elements.rival,
+          el("div.kinfo", {},
+            el("div.kname", {}, el("span.name", {}, match.rival.name), match.rival.boss ? bossTag() : null),
+            elements.says,
+            el("div.krounds", {}, elements.dots, elements.items))),
+        el("div.kword", {}, elements.line, elements.target),
+        elements.board,
+        el("div.klevel", {},
+          el("div.klevel-text", {}, elements.level, elements.levelCount),
+          el("div.kbar-track", {}, elements.levelFill, Array.from({ length: core.KITTEN_WORDS - 1 }, (_, i) =>
+            el("span.mark", { style: { left: `${((i + 1) / core.KITTEN_WORDS) * 100}%` } })))));
+      canvas.style.width = "100%";
+      canvas.style.height = "100%";
+      view = new BoardView({
+        canvas, minimap: null, grid: puzzle.grid, kind: core.BoardKind.Letters, fixed: true,
+        letterHeight: KITTEN_LETTER_HEIGHT, cellsAcross: CELLS_ACROSS[0], startWidth: Math.min(window.innerWidth, window.innerHeight),
+        selectionColor, emojiAtlas: null, emojiColumns: 1, onTap, colors: THEMES[settings.theme], underLetters, overLetters,
+      });
+      // The rounds played before, in their colours at once.
+      for (const round of match.rounds) view.animator.found(round.placed.cells, colorOf(round), true);
+      return elements.root;
+    },
+    shown() {
+      layout();
+      window.addEventListener("resize", onResize);
+      document.addEventListener("keydown", onKey);
+      document.addEventListener("visibilitychange", onVisibility);
+      last = 0;
+      frame = requestAnimationFrame(tick);
+    },
+    hidden() {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", onResize);
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("visibilitychange", onVisibility);
+    },
+    /** The browser's back: pauses first; true keeps the screen. */
+    onBack() {
+      if (paused || match.phase === core.KittenPhase.BoardOver) return false;
+      pause();
+      return true;
+    },
+  };
+}
+
+// ---- Confetti ----
+
+/** Confetti over a screen's root, falling from the middle, for 3 s. */
+function launchConfetti(root, colors) {
+  const canvas = el("canvas.confetti");
+  root.append(canvas);
+  const ctx = canvas.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  const w = window.innerWidth, h = window.innerHeight;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = `${w}px`;
+  canvas.style.height = `${h}px`;
+  const pieces = Array.from({ length: 140 }, () => ({
+    x: w / 2 + (Math.random() - 0.5) * w * 0.3, y: h * 0.45,
+    vx: (Math.random() - 0.5) * w * 1.4, vy: -h * (0.6 + Math.random() * 0.8),
+    size: 5 + Math.random() * 6, angle: Math.random() * 6, spin: (Math.random() - 0.5) * 12,
+    color: colors[Math.floor(Math.random() * colors.length)],
+  }));
+  let start = 0, previous = 0;
+  const step = (now) => {
+    if (!start) start = previous = now;
+    const dt = Math.min(0.05, (now - previous) / 1000);
+    previous = now;
+    const t = (now - start) / 1000;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    ctx.globalAlpha = Math.max(0, Math.min(1, 3 - t));
+    for (const p of pieces) {
+      p.vy += h * 1.3 * dt;
+      p.vx *= 1 - 1.2 * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.angle += p.spin * dt;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.angle);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+      ctx.restore();
+    }
+    if (t < 3) requestAnimationFrame(step);
+    else canvas.remove();
+  };
+  requestAnimationFrame(step);
+}
+
 // ---- Start ----
 
 async function start() {
@@ -1703,6 +2376,7 @@ async function start() {
   progress = load("progress", { bestTimes: {}, wordittos: [] });
   custom = load("custom", core.defaultCustom());
   saved = load("saved", null);
+  kitten = core.readKittenProgress(load("kitten", null));
   sound.enabled = settings.sound;
 
   const params = new URLSearchParams(location.search);

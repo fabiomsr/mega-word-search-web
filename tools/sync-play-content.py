@@ -5,7 +5,7 @@
 
 The game's repository defaults to ../mega-word-search-game. JSON files lose their // comments; each language's
 words go in one file (play/content/words-<lang>.json, categories in order); the Wordittos atlas is scaled down to
-128 px per picture and the cats theme's stickers likewise (sips, macOS); the English and German texts are read from Model/Strings.cs.
+128 px per picture and the cats theme's stickers and the drawings of «Beat the kitten» likewise (sips, macOS); the English and German texts are read from Model/Strings.cs.
 """
 import json
 import os
@@ -24,6 +24,8 @@ FONTS = os.path.join(SITE, "play", "fonts")
 LANGUAGES = ["es", "en", "de"]
 WORDITTO_SIZE = 128
 STICKER_SIZE = 128
+# The atlases of «Beat the kitten» (Model/KittenPictures.cs): their pictures to a row.
+KITTEN_SHEETS = {"angry": 6, "costumes": 6, "space": 6, "bosses": 4, "badges": 4}
 
 
 def read_json(path):
@@ -50,9 +52,11 @@ def strings():
     return tables
 
 
-def scale_atlas(atlas, size, name):
+def scale_atlas(atlas, size, name, columns=None):
+    """An atlas of 256 px pictures (or of `columns` to a row, of any size) scaled to `size` px a picture."""
     width = int(subprocess.check_output(["sips", "-g", "pixelWidth", atlas], text=True).split()[-1])
-    subprocess.run(["sips", "--resampleWidth", str(width * size // 256), atlas, "--out", os.path.join(OUT, name)],
+    new_width = columns * size if columns else width * size // 256
+    subprocess.run(["sips", "--resampleWidth", str(new_width), atlas, "--out", os.path.join(OUT, name)],
                    check=True, stdout=subprocess.DEVNULL)
 
 
@@ -78,6 +82,11 @@ def main():
     # Pictures of 256 px, 10 a row and 6 a row: scaled to WORDITTO_SIZE and STICKER_SIZE.
     scale_atlas(os.path.join(CONTENT, "wordittos", "wordittos.png"), WORDITTO_SIZE, "wordittos.png")
     scale_atlas(os.path.join(CONTENT, "themes", "cats", "stickers.png"), STICKER_SIZE, "stickers.png")
+    for name, columns in KITTEN_SHEETS.items():
+        scale_atlas(os.path.join(CONTENT, "kitten", f"{name}.png"), STICKER_SIZE, f"kitten-{name}.png", columns)
+    # In 256 colours, as the game keeps them (the game's tools/quantize-png.py, with Python's PIL).
+    subprocess.run([sys.executable, os.path.join(GAME, "tools", "quantize-png.py"),
+                    *(os.path.join(OUT, f"kitten-{name}.png") for name in KITTEN_SHEETS)], check=True, stdout=subprocess.DEVNULL)
 
     for name in ("UbuntuMono-Regular.ttf", "UFL.txt", "NotoSansSymbols2-Regular.ttf", "OFL-NotoSansSymbols2.txt", "Baloo2-Bold.ttf", "OFL-Baloo2.txt"):
         shutil.copy(os.path.join(CONTENT, "fonts", name), FONTS)
